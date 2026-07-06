@@ -1,0 +1,1388 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dispatch Placement</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#17202B; --bg:#EDF0F3; --panel:#FFFFFF; --line:#D9DFE6; --muted:#5C6874;
+    --urgent:#C92A2A; --warn:#E8590C; --ok:#2B8A3E; --action:#2B59C3; --action-d:#1E4396;
+    --gold:#B08900;
+  }
+  *{box-sizing:border-box; margin:0}
+  html,body{height:100%}
+  body{font:15px/1.45 'Barlow',sans-serif; color:var(--ink); background:var(--bg)}
+  h1,h2,h3,.data{font-family:'Barlow Semi Condensed',sans-serif}
+
+  /* ---------- Barre haute ---------- */
+  header{display:flex; align-items:center; gap:20px; padding:0 18px; height:54px;
+    background:var(--ink); color:#fff; position:sticky; top:0; z-index:1200}
+  header .brand{font-family:'Barlow Semi Condensed'; font-weight:700; font-size:18px; letter-spacing:.4px}
+  header .brand span{color:#7EA4FF}
+  nav{display:flex; gap:4px; margin-left:8px}
+  nav button{font:600 14px 'Barlow Semi Condensed'; letter-spacing:.3px; color:#B9C2CE;
+    background:none; border:none; padding:8px 14px; border-radius:8px; cursor:pointer}
+  nav button:hover{color:#fff}
+  nav button.on{background:#2A3644; color:#fff}
+  .demo-badge{margin-left:auto; font:600 12px 'Barlow Semi Condensed'; letter-spacing:.6px;
+    color:#FFD43B; border:1px solid #FFD43B66; padding:3px 10px; border-radius:99px}
+
+  /* ---------- Mise en page ---------- */
+  main{display:grid; grid-template-columns:1fr 460px; height:calc(100% - 54px)}
+  #map{height:100%; z-index:1}
+  aside{background:var(--panel); border-left:1px solid var(--line); overflow-y:auto; padding:16px}
+  .page{display:none; height:calc(100% - 54px); overflow-y:auto; padding:24px}
+  .page.on{display:block}
+  main.hidden{display:none}
+  @media(max-width:900px){
+    main{grid-template-columns:1fr; grid-template-rows:44vh 1fr}
+    aside{border-left:none; border-top:1px solid var(--line)}
+  }
+
+  /* ---------- Composants ---------- */
+  .kicker{font:600 11px 'Barlow Semi Condensed'; letter-spacing:1.2px; text-transform:uppercase; color:var(--muted)}
+  .card{border:1px solid var(--line); border-radius:12px; padding:14px; margin-top:12px; background:#fff}
+  .card.click{cursor:pointer; transition:border-color .12s, box-shadow .12s}
+  .card.click:hover{border-color:var(--action); box-shadow:0 2px 10px #2B59C31A}
+  .row{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .sp{margin-left:auto}
+  .muted{color:var(--muted); font-size:13px}
+  .tel{font-family:'Barlow Semi Condensed'; font-weight:600; letter-spacing:.5px}
+  a.tel{color:var(--action); text-decoration:none}
+
+  .chip{font:700 12px 'Barlow Semi Condensed'; letter-spacing:.4px; padding:2px 9px; border-radius:99px; white-space:nowrap}
+  .chip.urgent{background:#C92A2A14; color:var(--urgent); border:1px solid #C92A2A55}
+  .chip.warn{background:#E8590C14; color:var(--warn); border:1px solid #E8590C55}
+  .chip.ok{background:#2B8A3E12; color:var(--ok); border:1px solid #2B8A3E44}
+  .chip.gray{background:#5C687414; color:var(--muted); border:1px solid #5C687433}
+
+  .note{font:700 12px 'Barlow Semi Condensed'; padding:2px 9px; border-radius:6px}
+  .note.fusee{background:#FFF3BF; color:var(--gold); border:1px solid #B0890055}
+  .note.bon{background:#D3F9D8; color:var(--ok)}
+  .note.placable{background:#D0EBFF; color:#1971C2}
+  .note.potentiel{background:#FFE8CC; color:var(--warn)}
+  .note.cave{background:#E9ECEF; color:var(--muted)}
+
+  /* Créneaux façon tableau de départs */
+  .slot{display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--line);
+    border-radius:10px; margin-top:8px; background:#FAFBFC}
+  .slot .when{font:700 15px 'Barlow Semi Condensed'; letter-spacing:.5px; min-width:130px}
+  .slot.used{opacity:.6}
+  .slot button{margin-left:auto}
+
+  /* Badges lignes de transport */
+  .lb{display:inline-flex; align-items:center; justify-content:center; min-width:26px; height:22px;
+    padding:0 5px; border-radius:5px; font:700 13px 'Barlow Semi Condensed'; color:#fff}
+  .lb.walk{background:none; color:var(--muted); font-size:15px; min-width:auto}
+  .itin{margin-top:10px; padding:10px 12px; background:#F4F6F8; border-radius:10px; font-size:13px}
+  .itin .leg{display:flex; gap:8px; align-items:baseline; padding:3px 0}
+  .itin .leg .t{font:700 13px 'Barlow Semi Condensed'; min-width:42px; color:var(--ink)}
+  .itin .total{font:700 14px 'Barlow Semi Condensed'; margin-bottom:6px}
+
+  button.act{font:600 14px 'Barlow'; background:var(--action); color:#fff; border:none;
+    padding:8px 14px; border-radius:9px; cursor:pointer}
+  button.act:hover{background:var(--action-d)}
+  button.act:disabled{background:#A9B4C0; cursor:default}
+  button.ghost{font:600 13px 'Barlow'; background:none; color:var(--action); border:1px solid var(--line);
+    padding:6px 12px; border-radius:9px; cursor:pointer}
+  button.ghost:hover{border-color:var(--action)}
+  .back{font:600 13px 'Barlow'; color:var(--muted); background:none; border:none; cursor:pointer; padding:0 0 10px}
+  .back:hover{color:var(--ink)}
+
+  /* Filtres employeur (promo / sexe / permis) sur l'écran de sélection */
+  .fbtn{font:600 12px 'Barlow Semi Condensed'; letter-spacing:.3px; padding:4px 11px; border-radius:99px;
+    border:1px solid var(--line); background:#fff; color:var(--muted); cursor:pointer}
+  .fbtn:hover{border-color:var(--action); color:var(--action)}
+  .fbtn.on{background:var(--action); border-color:var(--action); color:#fff}
+  .flbl{font:600 11px 'Barlow Semi Condensed'; letter-spacing:.8px; text-transform:uppercase;
+    color:var(--muted); min-width:58px}
+
+  .score{font:700 20px 'Barlow Semi Condensed'; color:var(--action)}
+  .score small{font-size:12px; color:var(--muted); font-weight:600}
+  .bar{height:5px; border-radius:99px; background:#E4E8EC; overflow:hidden; margin-top:4px}
+  .bar i{display:block; height:100%; background:var(--action)}
+
+  table{width:100%; border-collapse:collapse; margin-top:14px; background:#fff; border-radius:12px; overflow:hidden}
+  th,td{text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); font-size:14px}
+  th{font:600 12px 'Barlow Semi Condensed'; letter-spacing:.8px; text-transform:uppercase; color:var(--muted); background:#F7F8FA}
+
+  /* Pulsation des entreprises urgentes sur la carte */
+  .mk{color:#fff; font:700 13px 'Barlow Semi Condensed'; width:30px; height:30px; border-radius:99px;
+    display:flex; align-items:center; justify-content:center; border:2.5px solid #fff; box-shadow:0 2px 8px #0004}
+  .mk.pulse{animation:pulse 1.6s ease-out infinite}
+  @keyframes pulse{
+    0%{box-shadow:0 2px 8px #0004, 0 0 0 0 rgba(201,42,42,.55)}
+    70%{box-shadow:0 2px 8px #0004, 0 0 0 16px rgba(201,42,42,0)}
+    100%{box-shadow:0 2px 8px #0004, 0 0 0 0 rgba(201,42,42,0)}
+  }
+  @media (prefers-reduced-motion:reduce){.mk.pulse{animation:none; outline:3px solid var(--urgent); outline-offset:2px}}
+
+  .sexe{display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px;
+    border-radius:99px; font:700 12px 'Barlow Semi Condensed'}
+  .sexe.F{background:#F3D9FA; color:#9C36B5}
+  .sexe.H{background:#D0EBFF; color:#1971C2}
+
+  button.danger{font:600 13px 'Barlow'; background:none; color:var(--urgent); border:1px solid #C92A2A55;
+    padding:6px 12px; border-radius:9px; cursor:pointer}
+  button.danger:hover{background:#C92A2A10}
+
+  /* Carte d'un étudiant exclu (ne répond pas / pas intéressé / pas dispo) */
+  .card.off{opacity:.55; background:#F4F6F8}
+
+  /* Créneau dont la date est PASSÉE sans avoir été pourvu : grisé + barré */
+  .slot.past{background:#F1F3F5; opacity:.6}
+  .slot.past .when{text-decoration:line-through; color:var(--muted)}
+  .chip.nonpourvu{background:#E9ECEF; color:var(--muted); border:1px dashed #5C687488; letter-spacing:.8px}
+
+  /* Sélecteur de statut d'un entretien passé (historique AA→AL) */
+  .stsel{font:600 12px 'Barlow Semi Condensed'; padding:3px 7px; border:1px solid var(--line);
+    border-radius:7px; background:#fff; color:var(--ink); cursor:pointer; max-width:150px}
+  .stsel:hover{border-color:var(--action)}
+
+  /* Blacklist (3 Refusé ou 2 Pas venu) : l'étudiant reste PROPOSÉ, mais
+     signalé par un carré fond noir / écriture blanche, repérable à l'œil */
+  .chip.bl{background:#111; color:#fff; border:1px solid #000; border-radius:4px; letter-spacing:.5px}
+
+  /* Pastille de comptage sur l'onglet Données */
+  .navbadge{background:var(--urgent); color:#fff; border-radius:99px; padding:0 7px;
+    font-size:11px; margin-left:5px; display:inline-block; line-height:17px}
+  .card.off h3{text-decoration:line-through; color:var(--muted)}
+
+  /* Modale de confirmation maison — window.confirm() est BLOQUÉ dans
+     l'iframe sandboxée des web apps Apps Script (il renvoie false en silence,
+     c'est pour ça que "Placer" ne faisait rien). */
+  .veil{position:fixed; inset:0; background:#17202B77; z-index:3000; display:none;
+    align-items:center; justify-content:center}
+  .veil.on{display:flex}
+  .modal{background:#fff; border-radius:14px; padding:20px; max-width:440px; width:92%;
+    box-shadow:0 10px 40px #0005}
+  .modal p{white-space:pre-line; margin:8px 0 16px}
+
+  .toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--ink);
+    color:#fff; padding:10px 18px; border-radius:10px; font:600 14px 'Barlow'; z-index:2000;
+    opacity:0; transition:opacity .25s; pointer-events:none}
+  .toast.on{opacity:1}
+  .legend{position:absolute; bottom:14px; left:14px; z-index:1000; background:#fff; border:1px solid var(--line);
+    border-radius:10px; padding:8px 12px; font-size:12px; display:flex; gap:12px}
+  .dot{width:10px;height:10px;border-radius:99px;display:inline-block;margin-right:4px;vertical-align:-1px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">DISPATCH<span>·</span>PLACEMENT</div>
+  <nav>
+    <button class="on" data-tab="carte" onclick="tab('carte')">Carte</button>
+    <button data-tab="entretiens" onclick="tab('entretiens')">Entretiens</button>
+    <button data-tab="historique" onclick="tab('historique')">Historique</button>
+    <button data-tab="analyses" onclick="tab('analyses')">Analyses IA</button>
+    <button data-tab="donnees" onclick="tab('donnees')">Données</button>
+  </nav>
+  <button class="ghost" id="btnRefresh" onclick="rafraichir(true)"
+    style="margin-left:auto; color:#B9C2CE; border-color:#2A3644">↻ Actualiser</button>
+  <div class="demo-badge" id="demoBadge" hidden>MODE DÉMO — données fictives</div>
+</header>
+
+<main id="tab-carte">
+  <div style="position:relative">
+    <div id="map"></div>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--urgent)"></i>&lt; 24 h ouvrées</span>
+      <span><i class="dot" style="background:var(--warn)"></i>&lt; 72 h ouvrées</span>
+      <span><i class="dot" style="background:var(--ok)"></i>plus tard</span>
+    </div>
+  </div>
+  <aside id="panel"></aside>
+</main>
+
+<div class="page" id="tab-entretiens"></div>
+<div class="page" id="tab-historique"></div>
+<div class="page" id="tab-analyses"></div>
+<div class="page" id="tab-donnees"></div>
+<div class="toast" id="toast"></div>
+
+<div class="veil" id="veil"><div class="modal">
+  <h3 id="mTitre"></h3>
+  <p id="mMsg" class="muted"></p>
+  <div class="row"><span class="sp"></span>
+    <button class="ghost" id="mNon">Annuler</button>
+    <button class="act" id="mOui">Confirmer</button></div>
+</div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+/* =====================================================================
+   COUCHE DONNÉES — bascule auto : Apps Script (prod) ou démo (fichier local)
+   ===================================================================== */
+const EN_PROD = typeof google !== 'undefined' && google.script && google.script.run;
+
+const Api = EN_PROD ? {
+  getData: () => new Promise((ok, ko) => google.script.run.withSuccessHandler(ok).withFailureHandler(ko).api_getData()),
+  refresh: () => new Promise((ok, ko) => google.script.run.withSuccessHandler(ok).withFailureHandler(ko).api_refresh()),
+  analyser: (e) => new Promise((ok, ko) => google.script.run.withSuccessHandler(ok).withFailureHandler(ko).api_analyserCV(e.id, e.prenom + ' ' + e.nom, e.cvUrl)),
+  analyserEntreprise: (e) => new Promise((ok, ko) => google.script.run.withSuccessHandler(ok).withFailureHandler(ko).api_analyserEntreprise(e.nom, e.adresse, e.commentaires || '')),
+  envoyerMail: (s, e, dh) => new Promise((ok, ko) => google.script.run.withSuccessHandler(ok).withFailureHandler(ko)
+    .api_envoyerMailConfirmation(s.mail, s.prenom, s.prenom + ' ' + s.nom, e.nom, e.adresse, dh, e.ligne)),
+  itineraire: (o, d, arr) => new Promise((ok, ko) => google.script.run.withSuccessHandler(ok).withFailureHandler(ko).api_itineraire(o, d, arr)),
+  placer: (ent, i, nom, tel) => new Promise((ok, ko) => google.script.run.withSuccessHandler(ok).withFailureHandler(ko).api_placer(ent.ligne, i, nom, tel, ent.nom)),
+  masquer: (ent) => new Promise((ok, ko) => google.script.run.withSuccessHandler(ok).withFailureHandler(ko).api_masquerEntreprise(ent.ligne, ent.nom)),
+  // Signature enrichie : l'étudiant et l'entreprise complets, pour alimenter
+  // la feuille SUIVI_APPELS (nom / prénom / tel + entreprise + localisation).
+  marquerExclu: (etu, ent, dh, motif) => new Promise((ok, ko) => google.script.run.withSuccessHandler(ok).withFailureHandler(ko)
+    .api_marquerInjoignable(etu.nom, etu.prenom, String(etu.tel), ent.nom, ent.adresse, dh, motif)),
+  // Statut d'un entretien PASSÉ : écrit dans la 3e colonne du bloc AGENDA
+  // (source de vérité) — les colonnes AA→AL de PREINSCRITS se resynchronisent
+  // automatiquement via le script existant du Sheet.
+  changerStatut: (s, en, statut) => new Promise((ok, ko) => google.script.run.withSuccessHandler(ok).withFailureHandler(ko)
+    .api_changerStatutEntretien(en.dh, en.entreprise || '', statut, s.prenom + ' ' + s.nom)),
+} : MockApi();
+
+/* ------------------------ DONNÉES DE DÉMONSTRATION ------------------------ */
+function MockApi() {
+  const J = (n, h, m) => { const d = new Date(); d.setDate(d.getDate() + n); d.setHours(h, m, 0, 0); return d.toISOString(); };
+
+  const SEXES = { E2:'F', E3:'H', E4:'F', E5:'H', E6:'F', E7:'F', E8:'H', E9:'F', E10:'F' };
+  const PERMIS = { E2:'non', E3:'oui', E4:'non', E5:'oui', E6:'oui', E7:'non', E8:'non', E9:'non', E10:'oui' };
+  // Historique d'entretiens (colonnes AA→AL en prod). Sans statut = pas encore
+  // eu lieu → bloque les créneaux en conflit (1 h) et alerte à ±2 h.
+  const ENTRETIENS = {
+    E2: [{ dh:J(-5,14,0), entreprise:'Zara — Rivoli', lieu:'Rue de Rivoli, 75001 Paris', statut:'Refusé' }],
+    E3: [{ dh:J(1,10,0),  entreprise:'Darty — République', lieu:'Place de la République, 75011 Paris', statut:'' },
+         { dh:J(-3,9,0),  entreprise:'Orange — Opéra', lieu:'20 Bd des Capucines, 75009 Paris', statut:'' }], // passé SANS statut → à renseigner
+    // E5 : 3 "Refusé" → BLACKLISTÉ (proposé quand même, badge noir)
+    E5: [{ dh:J(-20,10,0),entreprise:'Kiabi — Rosny', lieu:'Rosny 2', statut:'Refusé' },
+         { dh:J(-12,15,0),entreprise:'Zara — Rivoli', lieu:'Rue de Rivoli, 75001 Paris', statut:'Refusé' },
+         { dh:J(-4,11,0), entreprise:'Fnac — Saint-Lazare', lieu:'109 Rue Saint-Lazare, 75008 Paris', statut:'Refusé' }],
+    E6: [{ dh:J(1,8,0),   entreprise:'Mango — Beaugrenelle', lieu:'CC Beaugrenelle, 75015 Paris', statut:'' },
+         { dh:J(-10,11,0),entreprise:'Celio — Montparnasse', lieu:'Gare Montparnasse, 75015 Paris', statut:'Pas venu' }],
+    E8: [{ dh:J(2,15,0),  entreprise:'Boulanger — La Défense', lieu:'CC Les 4 Temps, 92092', statut:'' }],
+  };
+  // Coordonnées des villes de résidence (fournies par le géocodage serveur en prod)
+  const GEOS = { E2:[48.936,2.357], E3:[48.847,2.437], E4:[48.830,2.355], E5:[48.914,2.384],
+    E6:[48.835,2.240], E7:[48.790,2.455], E8:[48.892,2.344], E9:[48.864,2.443], E10:[48.893,2.288] };
+  const etudiants = [
+    { id:'E2', nom:'BAKAYOKO', prenom:'Aïcha', tel:'612345601', ville:'Saint-Denis', departement:'93', promo:'BTS MCO 1', diplome:'Bac Pro Commerce', note:'fusée', noteWorkshop:'fusée', avisWorkshop:'Excellente posture, très bon closing en jeu de rôle.', emploiSouhaite:'Vente / boutique', cvUrl:'#', lignes:[['M','13','#6EC4E8'],['M','4','#C04191']] },
+    { id:'E3', nom:'MARTIN', prenom:'Lucas', tel:'612345602', ville:'Vincennes', departement:'94', promo:'BTS MCO 1', diplome:'Bac STMG', note:'bon profil', noteWorkshop:'bon profil', avisWorkshop:'Sérieux, ponctuel, un peu réservé au premier contact.', emploiSouhaite:'Retail téléphonie', cvUrl:'#', lignes:[['M','1','#FFCD00'],['RER','A','#E2231A']] },
+    { id:'E4', nom:'NGUYEN', prenom:'Linh', tel:'612345603', ville:'Paris 13e', departement:'75', promo:'BTS NDRC 1', diplome:'Bac Général', note:'bon profil', noteWorkshop:'bon profil', avisWorkshop:'Très bon relationnel, préfère la relation client BtoB.', emploiSouhaite:'Relation client', cvUrl:'#', lignes:[['M','14','#62259D'],['M','6','#84C28E']] },
+    { id:'E5', nom:'DIALLO', prenom:'Mamadou', tel:'612345604', ville:'Aubervilliers', departement:'93', promo:'BTS MCO 1', diplome:'Bac Pro Vente', note:'plaçable', noteWorkshop:'plaçable', avisWorkshop:'Motivé, doit travailler son argumentaire.', emploiSouhaite:'Vente / boutique', cvUrl:'#', lignes:[['M','12','#007E49'],['M','13','#6EC4E8']] },
+    { id:'E6', nom:'PETIT', prenom:'Emma', tel:'612345605', ville:'Boulogne-Billancourt', departement:'92', promo:'BTS MCO 1', diplome:'Bac STMG', note:'fusée', noteWorkshop:'fusée', avisWorkshop:'Autonome, expérience de vente le week-end.', emploiSouhaite:'Retail / mode', cvUrl:'#', lignes:[['M','9','#B0BD00'],['M','1','#FFCD00']] },
+    { id:'E7', nom:'BENALI', prenom:'Yasmine', tel:'612345606', ville:'Créteil', departement:'94', promo:'BTS NDRC 1', diplome:'Bac Pro Métiers de l\'accueil', note:'potentiel à travailler', noteWorkshop:'potentiel à travailler', avisWorkshop:'Bonne volonté, manque de confiance à l\'oral.', emploiSouhaite:'Accueil / vente', cvUrl:'#', lignes:[['M','8','#CEADD2'],['M','1','#FFCD00']] },
+    { id:'E8', nom:'ROUSSEAU', prenom:'Théo', tel:'612345607', ville:'Paris 18e', departement:'75', promo:'BTS MCO 1', diplome:'Bac Général', note:'plaçable', noteWorkshop:'plaçable', avisWorkshop:'Bon contact, disponibilité immédiate.', emploiSouhaite:'Téléphonie / high-tech', cvUrl:'#', lignes:[['M','4','#C04191'],['M','13','#6EC4E8']] },
+    { id:'E9', nom:'KONE', prenom:'Fatou', tel:'612345608', ville:'Montreuil', departement:'93', promo:'BTS MCO 1', diplome:'Bac Pro Commerce', note:'cave', noteWorkshop:'cave', avisWorkshop:'Absences répétées au workshop.', emploiSouhaite:'Vente', cvUrl:'#', lignes:[['M','9','#B0BD00']] },
+    { id:'E10', nom:'GARCIA', prenom:'Sofia', tel:'612345609', ville:'Levallois-Perret', departement:'92', promo:'BTS MCO 1', diplome:'Bac STMG', note:'bon profil', noteWorkshop:'bon profil', avisWorkshop:'Dynamique, très bonne présentation.', emploiSouhaite:'Retail / cosmétique', cvUrl:'#', lignes:[['M','3','#837902'],['M','14','#62259D']] },
+  ].map(s => ({ ...s, sexe: SEXES[s.id] || '', permis: PERMIS[s.id] || '',
+    entretiens: ENTRETIENS[s.id] || [],
+    geo: GEOS[s.id] ? { lat: GEOS[s.id][0], lng: GEOS[s.id][1] } : null,
+    // E9 : pas de CV du tout → apparaît dans l'onglet "Données" (contrôle qualité)
+    cvUrl: s.id === 'E9' ? '' : 'https://drive.google.com/file/d/demo_' + s.id + '/view',
+    cvBrut: s.id === 'E9' ? '' : 'CV ' + s.prenom,
+    mail: (s.prenom + '.' + s.nom).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z.]/g, '') + '@exemple.fr' }));
+
+  const entreprises = [
+    { id:'A2', ligne:2, nom:'Bouygues Telecom — Rivoli', placeur:'Sarah', adresse:'118 Rue de Rivoli, 75001 Paris', lat:48.8598, lng:2.3437, contact:'M. Leroy · 601020301', commentaires:'Boutique à fort trafic. Cherche profils dynamiques, à l\'aise en anglais si possible.', postesOuverts:3, places:1, creneaux:[
+      { index:0, dh:J(1,9,30),  eleve:'', statut:'', libre:true },
+      { index:1, dh:J(1,14,0),  eleve:'Karim SAïDI', statut:'Accepté', libre:false },
+      { index:2, dh:J(4,10,0),  eleve:'', statut:'', libre:true } ] },
+    { id:'A3', ligne:3, nom:'Bouygues Telecom — Italie 2', placeur:'Mehdi', adresse:'30 Avenue d\'Italie, 75013 Paris', lat:48.8302, lng:2.3555, contact:'Mme Costa · 601020302', commentaires:'Centre commercial. Préférence profils MCO avec première expérience vente.', postesOuverts:2, places:0, creneaux:[
+      { index:0, dh:J(1,11,0), eleve:'', statut:'', libre:true },
+      { index:1, dh:J(2,15,30), eleve:'', statut:'', libre:true },
+      { index:2, dh:J(2,16,30), eleve:'Nora HADDAD', statut:'En attente', libre:false } ] },
+    { id:'A4', ligne:4, nom:'Glacier Amorino — Marais', placeur:'Sarah', adresse:'31 Rue Vieille du Temple, 75004 Paris', lat:48.8578, lng:2.3590, contact:'M. Bianchi · 601020303', commentaires:'Employé polyvalent. Fort turnover l\'été, veut quelqu\'un de fiable. Anglais apprécié (touristes).', postesOuverts:2, places:0, creneaux:[
+      { index:0, dh:J(2,10,30), eleve:'', statut:'', libre:true },
+      { index:1, dh:J(5,14,0),  eleve:'', statut:'', libre:true } ] },
+    { id:'A5', ligne:5, nom:'Sephora — La Défense', placeur:'Mehdi', adresse:'CC Westfield Les 4 Temps, 92092 La Défense', lat:48.8917, lng:2.2370, contact:'Mme Robert · 601020304', commentaires:'Conseil beauté. Présentation impeccable exigée.', postesOuverts:1, places:0, creneaux:[
+      { index:0, dh:J(5,11,0), eleve:'', statut:'', libre:true },
+      { index:1, dh:J(7,11,0), eleve:'', statut:'', libre:true } ] },
+    { id:'A6', ligne:6, nom:'Fnac — Saint-Lazare', placeur:'Sarah', adresse:'109 Rue Saint-Lazare, 75008 Paris', lat:48.8757, lng:2.3252, contact:'M. Dupuis · 601020305', commentaires:'Rayon téléphonie. Profil à l\'aise avec la tech.', postesOuverts:2, places:1, creneaux:[
+      { index:0, dh:J(2,9,0),  eleve:'', statut:'', libre:true },
+      { index:1, dh:J(3,9,0),  eleve:'Léo MOREAU', statut:'Refusé', libre:false },
+      { index:2, dh:J(8,14,30), eleve:'', statut:'', libre:true },
+      { index:3, dh:J(-1,10,0), eleve:'', statut:'', libre:true } ] }, // date passée → NON POURVU
+    { id:'A7', ligne:7, nom:'Orange — Opéra', placeur:'Mehdi', adresse:'20 Boulevard des Capucines, 75009 Paris', lat:48.8704, lng:2.3320, contact:'Mme Simon · 601020306', commentaires:'Nouveau partenaire, soigner les premiers envois !', postesOuverts:2, places:0, creneaux:[
+      { index:0, dh:J(6,10,0), eleve:'', statut:'', libre:true } ] },
+    // Entreprise complète : tous postes pourvus → jamais affichée
+    { id:'A8', ligne:8, nom:'Micromania — Châtelet', placeur:'Sarah', adresse:'Forum des Halles, 75001 Paris', lat:48.8620, lng:2.3460, contact:'—', commentaires:'', postesOuverts:1, places:1, creneaux:[] },
+  ].map(e => ({ ...e, postesRestants: Math.max(0, e.postesOuverts - e.places), geo:{lat:e.lat, lng:e.lng} }))
+   .filter(e => e.postesRestants > 0);
+
+  let analyses = {
+    'E2': { resume:'Vendeuse en boulangerie 2 ans le week-end, très orientée client. Bac Pro Commerce avec mention.', competences:['Encaissement','Vente conseil','Gestion d\'affluence'], points_forts:['Expérience réelle en vente','Anglais courant'], alerte:'', score_retail:23 },
+    'E6': { resume:'Vente en prêt-à-porter chaque samedi depuis 18 mois. Tenue de caisse et merchandising.', competences:['Merchandising','Caisse','Conseil mode'], points_forts:['Autonomie','Sens du service'], alerte:'', score_retail:22 },
+  };
+  const analysesGen = {
+    'E3': { resume:'Stage de 6 semaines en boutique téléphonie. Bonnes bases produits mobiles.', competences:['Vente téléphonie','SAV de premier niveau'], points_forts:['Connaissance produits'], alerte:'', score_retail:19 },
+    'E4': { resume:'Expérience associative de prospection, à l\'aise au téléphone.', competences:['Prospection','Relation client'], points_forts:['Aisance orale'], alerte:'Profil plus BtoB que retail', score_retail:14 },
+    'E5': { resume:'Bac Pro Vente, stages en supérette. Motivé, argumentaire à structurer.', competences:['Mise en rayon','Encaissement'], points_forts:['Fiabilité'], alerte:'', score_retail:15 },
+    'E7': { resume:'Formation accueil, peu d\'expérience vente directe.', competences:['Accueil','Standard'], points_forts:['Bonne présentation'], alerte:'Confiance à l\'oral à renforcer', score_retail:11 },
+    'E8': { resume:'Passionné high-tech, vend du matériel reconditionné en ligne.', competences:['Produits tech','Vente en ligne'], points_forts:['Expertise produit'], alerte:'', score_retail:18 },
+    'E9': { resume:'CV succinct, peu d\'éléments exploitables.', competences:['—'], points_forts:[], alerte:'Assiduité signalée en workshop', score_retail:6 },
+    'E10': { resume:'Conseillère en parfumerie 1 an (job étudiant). Très bon fit cosmétique/retail.', competences:['Conseil beauté','Fidélisation'], points_forts:['Présentation','Sens commercial'], alerte:'', score_retail:24 },
+  };
+
+  // Analyses IA des entreprises (feuille ANALYSES_ENTREPRISES en prod)
+  const analysesEntreprises = {
+    'bouygues telecom — rivoli': { infos_suffisantes:true, secteur:'Téléphonie', activite:'Boutique opérateur télécom à fort trafic, clientèle de passage et touristique.', postes_envisageables:['Vendeur conseil','Conseiller client'], criteres:['Profils dynamiques','À l\'aise en anglais si possible'], mots_cles:['téléphonie','mobile','forfait','boutique','conseil','vente'], promo_conseillee:'MCO' },
+    'glacier amorino — marais': { infos_suffisantes:true, secteur:'Restauration', activite:'Glacier artisanal en zone touristique.', postes_envisageables:['Employé polyvalent','Vendeur'], criteres:['Quelqu\'un de fiable','Anglais apprécié (touristes)'], mots_cles:['glace','restauration','vente','touristes','caisse','service'], promo_conseillee:'MCO' },
+  };
+
+  let historique = [
+    { date:J(-2,16,4), etudiant:'Karim SAïDI', tel:'612345699', entreprise:'Bouygues Telecom — Rivoli', creneau:J(1,14,0), action:'Placé sur créneau', par:'sarah@exemple.fr' },
+    { date:J(-3,11,20), etudiant:'Nora HADDAD', tel:'612345698', entreprise:'Bouygues Telecom — Italie 2', creneau:J(2,16,30), action:'Placé sur créneau', par:'mehdi@exemple.fr' },
+    { date:J(-6,10,2), etudiant:'Léo MOREAU', tel:'612345697', entreprise:'Fnac — Saint-Lazare', creneau:J(3,9,0), action:'Placé sur créneau', par:'sarah@exemple.fr' },
+  ];
+
+  // Itinéraire fictif mais réaliste : lignes de l'étudiant, horaires calculés
+  // à rebours pour arriver 15 min avant le créneau.
+  function itin(etu, ent, dhIso) {
+    // L'heure du RDV est l'heure d'arrivée visée : le calcul remonte le temps.
+    const arrivee = new Date(dhIso);
+    const legsDef = [
+      { mode:'Marche', duree:6 },
+      { mode:etu.lignes[0][0]==='RER'?'RER':'Métro', ligne:etu.lignes[0][1], couleur:etu.lignes[0][2], duree:13, de:etu.ville, vers:'Correspondance' },
+      ...(etu.lignes[1] ? [{ mode:etu.lignes[1][0]==='RER'?'RER':'Métro', ligne:etu.lignes[1][1], couleur:etu.lignes[1][2], duree:9, de:'Correspondance', vers:'Station proche' }] : []),
+      { mode:'Marche', duree:5 },
+    ];
+    const total = legsDef.reduce((s,l)=>s+l.duree,0) + (legsDef.length-2)*3;
+    let t = new Date(arrivee.getTime() - total*60000);
+    const etapes = legsDef.map(l => {
+      const dep = new Date(t); t = new Date(t.getTime() + l.duree*60000);
+      if (l.ligne) t = new Date(t.getTime() + 3*60000); // attente correspondance
+      return { ...l, depart: dep.toISOString(), arrivee: new Date(dep.getTime()+l.duree*60000).toISOString() };
+    });
+    return { dureeTotale: total, depart: etapes[0].depart, arrivee: arrivee.toISOString(),
+      correspondances: legsDef.filter(l=>l.ligne).length - 1, etapes };
+  }
+
+  return {
+    getData: () => Promise.resolve({ entreprises, etudiants, analyses, analysesEntreprises, historique,
+      regles: { duree: 60, tampon: 120 }, maintenant:new Date().toISOString() }),
+    refresh: () => Promise.resolve({ entreprises, maintenant:new Date().toISOString() }),
+    analyser: (e) => new Promise(ok => setTimeout(() => {
+      const a = analyses[e.id] || analysesGen[e.id];
+      const depuisCache = !!analyses[e.id];
+      analyses[e.id] = a;
+      ok({ cle:e.id, analyse:a, depuisCache });
+    }, depuis(e) ? 60 : 700)),
+    analyserEntreprise: (e) => new Promise(ok => setTimeout(() => {
+      const n = e.nom.toLowerCase().trim();
+      let a = analysesEntreprises[n];
+      const depuisCache = !!a;
+      if (!a) {
+        // Même règle qu'en prod : enseigne reconnue → analyse ; sinon RIEN n'est
+        // inventé, l'analyse dit explicitement qu'elle manque d'informations.
+        const secteur = /sephora/.test(n) ? 'Beauté' : /fnac|micromania/.test(n) ? 'Culture / high-tech'
+          : /orange|bouygues|sfr/.test(n) ? 'Téléphonie' : /amorino|glacier/.test(n) ? 'Restauration'
+          : '';
+        const connue = !!secteur;
+        a = analysesEntreprises[n] = {
+          infos_suffisantes: connue,
+          secteur,
+          activite: connue ? 'Point de vente ' + secteur.toLowerCase() + ' (analyse Mistral en prod).'
+            : 'Entreprise non identifiée avec certitude — informations insuffisantes (nom, adresse et commentaires ne permettent pas de conclure).',
+          postes_envisageables: ['Vendeur conseil', 'Conseiller client'],
+          criteres: String(e.commentaires || '').split('.').map(x => x.trim()).filter(Boolean).slice(0, 3),
+          mots_cles: connue ? [secteur.toLowerCase(), 'vente', 'conseil', 'boutique', 'client'] : [],
+          promo_conseillee: '' };
+      }
+      ok({ cle: n, analyse: a, depuisCache });
+    }, 500)),
+    changerStatut: (s, en, statut) => new Promise(ok => setTimeout(() => {
+      historique.unshift({ date:new Date().toISOString(), etudiant:s.prenom + ' ' + s.nom, tel:s.tel,
+        entreprise:en.entreprise || '', creneau:en.dh, action:'Statut d\'entretien → ' + statut + ' (bloc AGENDA en prod, AA→AL resynchronisé par le script du Sheet)', par:'vous' });
+      ok({ ok:true });
+    }, 300)),
+    envoyerMail: () => Promise.resolve({ ok:true, fiche:false }),
+    itineraire: (etu, ent, arr) => Promise.resolve(itin(etu, ent, arr)),
+    placer: (ent, i, nom, tel) => {
+      const c = ent.creneaux.find(c => c.index === i);
+      if (!c || !c.libre) return Promise.resolve({ ok:false, erreur:'Ce créneau vient d\'être pris.' });
+      c.eleve = nom; c.libre = false;
+      historique.unshift({ date:new Date().toISOString(), etudiant:nom, tel, entreprise:ent.nom, creneau:c.dh, action:'Placé sur créneau', par:'vous' });
+      return Promise.resolve({ ok:true });
+    },
+    marquerExclu: (etu, ent, dh, motif) => {
+      const nom = etu.prenom + ' ' + etu.nom;
+      historique.unshift({ date:new Date().toISOString(), etudiant:nom, tel:etu.tel, entreprise:ent.nom, creneau:dh, action:motif + ' (→ feuille SUIVI_APPELS en prod)', par:'vous' });
+      return Promise.resolve({ ok:true });
+    },
+    masquer: (ent) => {
+      const i = entreprises.findIndex(x => x.id === ent.id);
+      if (i !== -1) entreprises.splice(i, 1);
+      historique.unshift({ date:new Date().toISOString(), etudiant:'', tel:'', entreprise:ent.nom, creneau:'', action:'Entreprise masquée (ligne A:H passée en rouge dans AGENDA)', par:'vous' });
+      return Promise.resolve({ ok:true });
+    },
+  };
+  function depuis(e){ return !!analyses[e.id]; }
+}
+
+/* =====================================================================
+   ÉTAT + UTILITAIRES
+   ===================================================================== */
+let DB = null, map = null, markers = [];
+let vue = { type:'liste' };     // vue courante du panneau : liste | entreprise | candidats
+let seqCandidats = 0;           // invalide les callbacks d'une sélection abandonnée
+let cand = null;                // sélection en cours : { e, slot, rowsAll, rows, pos, filtres }
+const EXCLUS = new Map();       // étudiants "ne répond pas / pas intéressé / pas dispo" → motif (session)
+const $ = s => document.querySelector(s);
+
+/* Confirmation maison (window.confirm est bloqué dans l'iframe Apps Script). */
+function confirmer(titre, msg) {
+  return new Promise(res => {
+    $('#mTitre').textContent = titre;
+    $('#mMsg').textContent = msg;
+    const v = $('#veil');
+    const done = ok => { v.classList.remove('on'); $('#mOui').onclick = $('#mNon').onclick = v.onclick = null; res(ok); };
+    $('#mOui').onclick = () => done(true);
+    $('#mNon').onclick = () => done(false);
+    v.onclick = ev => { if (ev.target === v) done(false); };
+    v.classList.add('on');
+  });
+}
+
+/* Distance à vol d'oiseau (km) — pour le pré-classement instantané des candidats */
+function havKm(a, b) {
+  const R = 6371, rad = x => x * Math.PI / 180;
+  const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat/2)**2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+/* Estimation grossière du temps de transport IDF à partir de la distance,
+   uniquement pour ORDONNER les profils avant l'arrivée des vrais itinéraires. */
+const estMin = km => Math.round(12 + km * 2.5);
+const ptsTrajet = min => Math.max(0, 30 - Math.round(min / 3));
+
+/* Texte normalisé pour les comparaisons : minuscules, sans accents */
+const normTxt = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+/* Clé d'une analyse d'entreprise — MÊME format que le backend (lireAnalysesEntreprises_) */
+const cleEnt = nom => String(nom || '').toLowerCase().trim();
+
+/* ---------- CRÉNEAUX PASSÉS ----------
+   Un créneau libre dont la date est passée n'est plus jamais proposé :
+   il est affiché grisé/barré et marqué NON POURVU. */
+const estPasse = iso => { const d = new Date(iso); return !isNaN(d) && d.getTime() < Date.now(); };
+/* Créneaux encore proposables : libres ET à venir */
+const creneauxAVenir = e => e.creneaux.filter(c => c.libre && !estPasse(c.dh));
+
+/* ---------- BLACKLIST AUTOMATIQUE ----------
+   Lue dans l'historique AA→AL : 3 entretiens "Refusé" OU 2 "Pas venu"
+   ("Absence justifiée" ne compte pas) → l'étudiant n'est plus jamais proposé. */
+const BL_REFUS = 3, BL_PAS_VENU = 2;
+function statsEntretiens(s) {
+  let refus = 0, pasVenu = 0;
+  (s.entretiens || []).forEach(en => {
+    const st = normTxt(en.statut);
+    if (!st) return;
+    if (st.indexOf('refus') !== -1) refus++;
+    else if (st.indexOf('absence') === -1 && st.indexOf('venu') !== -1) pasVenu++;
+  });
+  return { refus, pasVenu };
+}
+const estBlackliste = s => { const t = statsEntretiens(s); return t.refus >= BL_REFUS || t.pasVenu >= BL_PAS_VENU; };
+
+/* Statut canonique (tolère les variantes d'écriture de la feuille) */
+function statutCanon(st) {
+  const s = normTxt(st);
+  if (!s) return '';
+  if (s.indexOf('accept') !== -1) return 'Accepté';
+  if (s.indexOf('attente') !== -1) return 'En attente';
+  if (s.indexOf('absence') !== -1) return 'Absence justifiée';
+  if (s.indexOf('refus') !== -1) return 'Refusé';
+  if (s.indexOf('venu') !== -1) return 'Pas venu';
+  return '';
+}
+
+/* ---------- SCORE /100 ----------
+   note pédagogique (35) + IA retail (20) + trajet réel (30) + affinité
+   candidat↔entreprise (15). Malus -20 si un AUTRE entretien est prévu à
+   moins de 2 h : on privilégie TOUJOURS un étudiant totalement libre. */
+const scoreDe = r => Math.max(0, Math.min(100,
+  (NOTE_PTS[r.s.note] || 0)
+  + Math.round((r.a ? (r.a.score_retail || 0) : 13) * 0.8)
+  + r.trajetPts
+  + (r.aff == null ? 7 : r.aff)
+  - (r.entretienProche ? 20 : 0)));
+
+/* ---------- ANTI-COLLISION D'HORAIRES ----------
+   Un entretien dure 1 h (DB.regles.duree). Un étudiant déjà attendu sur un
+   créneau qui CHEVAUCHE (placé lundi 13 h → ni lundi 13 h, ni 13 h 30) est
+   ÉCARTÉ d'office. Un entretien SANS STATUT n'a pas encore eu lieu : il
+   compte. À moins de 2 h avant/après (DB.regles.tampon) : avertissement +
+   malus, sans exclusion. */
+function conflitEntretien(s, slotDh) {
+  const duree = ((DB && DB.regles ? DB.regles.duree : 60)) * 60000;
+  const tampon = ((DB && DB.regles ? DB.regles.tampon : 120)) * 60000;
+  const deb = new Date(slotDh).getTime(), fin = deb + duree;
+  let dur = null, proche = null;
+  (s.entretiens || []).forEach(en => {
+    if (en.statut) return;               // statut présent = entretien déjà passé
+    const d = new Date(en.dh).getTime();
+    if (isNaN(d)) return;
+    const f = d + duree;
+    if (d < fin && f > deb) dur = dur || en;
+    else if (d < fin + tampon && f > deb - tampon) proche = proche || en;
+  });
+  return { dur, proche };
+}
+
+/* ---------- AFFINITÉ CANDIDAT ↔ ENTREPRISE (0-15) ----------
+   Recoupe les tags extraits du CV (secteurs, expériences, compétences,
+   centres d'intérêt, qualités) avec ceux de l'analyse de l'entreprise
+   (secteur, mots-clés, postes, critères). 7/15 neutre tant qu'une des deux
+   analyses manque, pour ne pas fausser le pré-classement. */
+function scoreAffinite(a, aE) {
+  if (!a || !aE) return 7;
+  // Entreprise non identifiée (infos_suffisantes: false) : pas de mots-clés
+  // fiables → affinité NEUTRE plutôt que calculée sur du vide/de l'inventé.
+  if (aE.infos_suffisantes === false && !(aE.criteres || []).length) return 7;
+  const texteEtu = normTxt([].concat(
+    a.secteurs || [], a.competences || [], a.centres_interet || [], a.qualites || [],
+    (a.experiences || []).map(x => (x.poste || '') + ' ' + (x.secteur || ''))).join(' | '));
+  const tagsEnt = [].concat([aE.secteur || ''], aE.mots_cles || [],
+    aE.postes_envisageables || aE.postes || [], aE.criteres || []);
+  const vus = new Set(); let hits = 0;
+  tagsEnt.forEach(t => normTxt(t).split(/[^a-z0-9]+/).forEach(mot => {
+    if (mot.length < 4 || vus.has(mot)) return;
+    if (texteEtu.indexOf(mot) !== -1) { hits++; vus.add(mot); }
+  }));
+  return Math.min(15, hits * 3);
+}
+
+/* Pastille de statut d'un entretien (colonnes AA→AL) — vide = pas encore eu lieu */
+function chipStatut(st) {
+  const s = normTxt(st);
+  if (!s) return '<span class="chip warn">⏳ À venir</span>';
+  if (s.indexOf('accept') !== -1) return '<span class="chip ok">Accepté</span>';
+  if (s.indexOf('attente') !== -1) return '<span class="chip warn">En attente</span>';
+  if (s.indexOf('refus') !== -1) return '<span class="chip urgent">Refusé</span>';
+  if (s.indexOf('venu') !== -1) return '<span class="chip urgent">Pas venu</span>';
+  if (s.indexOf('absence') !== -1) return '<span class="chip gray">Absence justifiée</span>';
+  return `<span class="chip gray">${st}</span>`;
+}
+
+/* ---------- Actualisation en direct (créneaux/entreprises) ----------
+   Recharge LÉGÈREMENT les entreprises toutes les 45 s + au retour sur l'onglet,
+   puis redessine la carte et le panneau — sans jamais recharger la page. */
+let refreshEnCours = false;
+async function rafraichir(manuel) {
+  if (!DB || refreshEnCours) return;
+  if (vue.type === 'candidats' && !manuel) return; // ne pas perturber une sélection en cours
+  refreshEnCours = true;
+  try {
+    const r = await Api.refresh();
+    DB.entreprises = r.entreprises;
+    drawMarkers();
+    if (vue.type === 'liste') renderListe();
+    else if (vue.type === 'entreprise') {
+      if (DB.entreprises.some(e => e.id === vue.id)) renderEntreprise(vue.id);
+      else renderListe(); // l'entreprise a été masquée / complétée entre-temps
+    }
+    if (manuel) toast('Données actualisées ✓');
+    majBadgeDonnees();
+    if (document.querySelector('#tab-donnees.on')) renderDonnees();
+  } catch (e) { if (manuel) toast('❌ Échec de l\'actualisation'); }
+  refreshEnCours = false;
+}
+setInterval(() => rafraichir(false), 45000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) rafraichir(false); });
+const fmtDH = iso => new Date(iso).toLocaleString('fr-FR', { weekday:'short', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }).replace(',', ' ·');
+const fmtH = v => {
+  const s = String(v || '');
+  // Format brut Navitia "20260704T091500" = heure locale de Paris, déjà la bonne
+  const m = s.match(/^(\d{8})T(\d{2})(\d{2})/);
+  if (m) return m[2] + ':' + m[3];
+  return new Date(s).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+};
+
+/* ---------- Urgence en HEURES OUVRÉES ----------
+   Les week-ends ne comptent pas : personne n'est envoyé en entretien le
+   samedi/dimanche. Le temps écoulé le samedi et le dimanche est donc IGNORÉ :
+   un vendredi, un entretien du lundi matin est bien "URGENT · < 24 h",
+   comme si le lundi était collé au vendredi. */
+function heuresOuvrees(depuis, jusqua) {
+  let h = 0;
+  const cur = new Date(depuis);
+  while (cur < jusqua) {
+    const finJour = new Date(cur); finJour.setHours(24, 0, 0, 0);
+    const seg = finJour < jusqua ? finJour : jusqua;
+    const d = cur.getDay();               // 0 = dimanche, 6 = samedi
+    if (d !== 0 && d !== 6) h += (seg - cur) / 36e5;
+    cur.setTime(finJour.getTime());
+  }
+  return h;
+}
+function urgence(iso) {
+  const h = heuresOuvrees(new Date(), new Date(iso));
+  if (h < 24) return { cls:'urgent', label:'URGENT · < 24 h', col:'var(--urgent)', rang:0 };
+  if (h < 72) return { cls:'warn', label:'< 72 h', col:'var(--warn)', rang:1 };
+  return { cls:'ok', label:'J-' + Math.ceil(h/24) + ' ouvrés', col:'var(--ok)', rang:2 };
+}
+function noteBadge(n) {
+  const m = { 'fusée':['fusee','🚀 Fusée'], 'bon profil':['bon','Bon profil'], 'plaçable':['placable','Plaçable'],
+    'potentiel à travailler':['potentiel','Potentiel'], 'cave':['cave','Cave'] };
+  const [cls, lbl] = m[n] || ['cave', n || '—'];
+  return `<span class="note ${cls}">${lbl}</span>`;
+}
+const NOTE_PTS = { 'fusée':35, 'bon profil':28, 'plaçable':22, 'potentiel à travailler':13, 'cave':4 };
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); setTimeout(() => t.classList.remove('on'), 2600); }
+
+function tab(name) {
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+  $('#tab-carte').classList.toggle('hidden', name !== 'carte');
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('on', p.id === 'tab-' + name));
+  if (name === 'entretiens') renderEntretiens();
+  if (name === 'historique') renderHistorique();
+  if (name === 'analyses') renderAnalyses();
+  if (name === 'donnees') renderDonnees();
+  if (name === 'carte' && map) setTimeout(() => map.invalidateSize(), 60);
+}
+
+/* =====================================================================
+   CARTE
+   ===================================================================== */
+function initMap() {
+  map = L.map('map').setView([48.86, 2.34], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'© OpenStreetMap' }).addTo(map);
+  drawMarkers();
+}
+function drawMarkers() {
+  markers.forEach(m => map.removeLayer(m)); markers = [];
+  DB.entreprises.forEach(e => {
+    if (!e.geo) return;
+    const libres = creneauxAVenir(e); // libres ET à venir (les passés = NON POURVU)
+    if (!libres.length) return; // plus rien de proposable → disparaît de la carte
+    const u = urgence(libres.map(c => c.dh).sort()[0]);
+    const icon = L.divIcon({ className:'', html:
+      `<div class="mk${u.rang === 0 ? ' pulse' : ''}" style="background:${u.col}">${libres.length}</div>`,
+      iconSize:[30,30], iconAnchor:[15,15] });
+    const mk = L.marker([e.geo.lat, e.geo.lng], { icon }).addTo(map)
+      .bindTooltip(`${e.nom} — ${libres.length} créneau(x) libre(s)`)
+      .on('click', () => renderEntreprise(e.id));
+    markers.push(mk);
+  });
+}
+
+/* =====================================================================
+   PANNEAU — liste, entreprise, candidats
+   ===================================================================== */
+function renderListe() {
+  vue = { type:'liste' };
+  const tri = [...DB.entreprises].sort((a, b) => {
+    const ua = creneauxAVenir(a).map(c=>c.dh).sort()[0] || '9999';
+    const ub = creneauxAVenir(b).map(c=>c.dh).sort()[0] || '9999';
+    return ua.localeCompare(ub);
+  });
+  const avec = tri.filter(e => creneauxAVenir(e).length);
+  const sans = tri.filter(e => !creneauxAVenir(e).length);
+  $('#panel').innerHTML = `
+    <div class="kicker">Entreprises avec créneaux à pourvoir · ${avec.length}</div>
+    <p class="muted" style="margin-top:4px">Postes tous pourvus ou entreprise masquée = absente d'ici. Un créneau libre dont la date est passée n'est plus jamais proposé : il est marqué <b>NON POURVU</b>. Tri par urgence (heures ouvrées, week-ends ignorés).</p>
+    ${avec.map(e => carteEntreprise(e)).join('')}
+    ${sans.length ? `<div class="kicker" style="margin-top:20px">Postes restants mais aucun créneau libre à venir · ${sans.length}</div>
+      <p class="muted" style="margin-top:4px">Invisibles sur la carte — demander de nouveaux créneaux à l'entreprise.</p>
+      ${sans.map(e => carteEntreprise(e)).join('')}` : ''}`;
+}
+function carteEntreprise(e) {
+  return (e => {
+      const libres = creneauxAVenir(e);
+      const perdus = e.creneaux.filter(c => c.libre && estPasse(c.dh)).length;
+      const prochain = libres.map(c => c.dh).sort()[0];
+      const u = prochain ? urgence(prochain) : null;
+      return `<div class="card click" onclick="renderEntreprise('${e.id}')">
+        <div class="row"><h3>${e.nom}</h3><span class="sp"></span>${u ? `<span class="chip ${u.cls}">${u.label}</span>` : '<span class="chip gray">Aucun créneau à venir</span>'}</div>
+        <div class="muted" style="margin-top:3px">${e.adresse}</div>
+        <div class="row" style="margin-top:8px">
+          <span class="chip gray">${e.postesRestants} poste(s) restant(s)</span>
+          <span class="chip gray">${libres.length} créneau(x) libre(s)</span>
+          ${perdus ? `<span class="chip nonpourvu">${perdus} NON POURVU</span>` : ''}
+          ${prochain ? `<span class="muted sp data">${fmtDH(prochain)}</span>` : ''}
+        </div>
+      </div>`;
+  })(e);
+}
+
+function renderEntreprise(id) {
+  vue = { type:'entreprise', id: id };
+  const e = DB.entreprises.find(x => x.id === id);
+  if (!e) { renderListe(); return; }
+  map && e.geo && map.setView([e.geo.lat, e.geo.lng], 14);
+  const tri = [...e.creneaux].sort((a, b) => a.dh.localeCompare(b.dh));
+  $('#panel').innerHTML = `
+    <button class="back" onclick="renderListe()">← Toutes les entreprises</button>
+    <div class="kicker">Entreprise</div>
+    <h2 style="margin-top:2px">${e.nom}</h2>
+    <div class="muted">${e.adresse}</div>
+    <div class="card">
+      <div><b>Placeur :</b> ${e.placeur} &nbsp;·&nbsp; <b>Contact :</b> ${e.contact}</div>
+      ${e.commentaires ? `<div class="muted" style="margin-top:6px">💬 ${e.commentaires}</div>` : ''}
+      <div class="row" style="margin-top:8px">
+        <span class="chip gray">${e.postesOuverts} poste(s) ouvert(s)</span>
+        <span class="chip ok">${e.postesRestants} restant(s)</span>
+        <span class="sp"></span>
+        <button class="danger" onclick="masquer('${e.id}')">Masquer l'entreprise</button>
+      </div>
+    </div>
+    <div class="kicker" style="margin-top:18px">Créneaux d'entretien</div>
+    ${tri.length ? tri.map(c => {
+      const passe = estPasse(c.dh);
+      // Créneau libre dont la date est PASSÉE : plus jamais proposé → NON POURVU
+      if (c.libre && passe) return `<div class="slot used past">
+        <span class="when data">${fmtDH(c.dh)}</span>
+        <span class="muted">Date passée sans placement</span>
+        <span class="chip nonpourvu sp">NON POURVU</span></div>`;
+      if (!c.libre) return `<div class="slot used">
+        <span class="when data">${fmtDH(c.dh)}</span>
+        <span>${c.eleve || '—'}</span>
+        ${passe && c.eleve && !c.statut
+          ? `<span class="chip warn sp" title="Entretien passé : renseigner le statut depuis l'onglet Entretiens (carte de l'étudiant) — il sera écrit dans PREINSCRITS et dans ce bloc AGENDA">⏳ Statut à renseigner</span>`
+          : `<span class="chip gray sp">${c.statut || 'Réservé'}</span>`}</div>`;
+      const u = urgence(c.dh);
+      return `<div class="slot">
+        <span class="when data" style="color:${u.col}">${fmtDH(c.dh)}</span>
+        <span class="chip ${u.cls}">${u.label}</span>
+        <button class="act" onclick="renderCandidats('${e.id}', ${c.index})">Choisir un étudiant</button></div>`;
+    }).join('') : '<p class="muted" style="margin-top:8px">Aucun créneau saisi dans l\'agenda pour cette entreprise.</p>'}`;
+}
+
+/* ----- Sélection des candidats pour un créneau -----
+   Stratégie "top 10 immédiat" :
+   1. Pré-classement INSTANTANÉ de tous les étudiants avec ce qu'on a déjà :
+      note pédagogique + analyse IA en cache (13/25 neutre si absente)
+      + distance à vol d'oiseau (le géocodage des villes est fait côté serveur).
+   2. Affichage immédiat des 10 meilleurs, scores marqués "≈".
+   3. En ARRIÈRE-PLAN, en parallèle : les 10 itinéraires réels PRIM et les
+      analyses manquantes affinent chaque carte au fil de l'eau, puis la
+      liste est retriée une fois tout arrivé. Aucun blocage, aucun cache.
+   Les FILTRES EMPLOYEUR (promo / sexe / permis) restreignent la liste selon
+   les critères de l'entreprise ; ils s'appliquent instantanément, sans perdre
+   les itinéraires/analyses déjà chargés. */
+function renderCandidats(entId, slotIdx) {
+  const e = DB.entreprises.find(x => x.id === entId);
+  const slot = e.creneaux.find(c => c.index === slotIdx);
+  // GARDE-FOU : un créneau passé ou repris entre-temps n'est jamais pourvu.
+  if (!slot || !slot.libre || estPasse(slot.dh)) {
+    toast('⛔ Ce créneau est passé ou déjà pris — il n\'est plus proposable.');
+    renderEntreprise(entId);
+    return;
+  }
+  const u = urgence(slot.dh);
+  vue = { type:'candidats', entId, slotIdx };
+  ++seqCandidats;
+
+  // Analyse IA de l'entreprise (secteur, postes, exigences) : lue dans le
+  // cache serveur, sinon demandée en arrière-plan — l'affinité s'affine à l'arrivée.
+  const aE0 = (DB.analysesEntreprises || {})[cleEnt(e.nom)] || null;
+
+  // 1. Pré-classement instantané (aucun appel réseau) — les étudiants marqués
+  //    "ne répond pas / pas intéressé / pas dispo" pendant la session sont écartés.
+  //    ANTI-COLLISION : un étudiant dont un entretien À VENIR (sans statut,
+  //    colonnes AA→AL) chevauche ce créneau (durée 1 h) est ÉCARTÉ d'office.
+  const enConflit = [];
+  const rowsAll = [];
+  // "placable !== false" : les étudiants déjà placés (colonne X) ou désinscrits
+  // sont chargés (pour leur historique) mais jamais proposés ici.
+  // Les BLACKLISTÉS (3 "Refusé" ou 2 "Pas venu") restent PROPOSÉS normalement :
+  // ils sont signalés par un badge noir sur leur carte, repérable à l'œil.
+  DB.etudiants.filter(s => s.placable !== false && s.note !== 'cave' && !EXCLUS.has(s.id)).forEach(s => {
+    const cf = conflitEntretien(s, slot.dh);
+    if (cf.dur) { enConflit.push({ s, en: cf.dur }); return; }
+    const a = DB.analyses[s.id] || null;
+    const km = (s.geo && e.geo) ? havKm(s.geo, e.geo) : null;
+    rowsAll.push({ s, a, it:null, km,
+      trajetPts: km == null ? 10 : ptsTrajet(estMin(km)),
+      aff: aE0 ? scoreAffinite(a, aE0) : null,
+      entretienProche: cf.proche || null });
+  });
+  rowsAll.forEach(r => r.score = scoreDe(r));
+  rowsAll.sort((x, y) => y.score - x.score);
+  cand = { e, slot, rowsAll, rows: rowsAll, pos: 0, aE: aE0, enConflit, filtres: { promo:'', sexe:'', permis:'' } };
+
+  if (!cand.aE) {
+    const seq = seqCandidats;
+    Api.analyserEntreprise(e).then(res => {
+      if (seq !== seqCandidats) return;
+      cand.aE = res.analyse;
+      (DB.analysesEntreprises = DB.analysesEntreprises || {})[cleEnt(e.nom)] = res.analyse;
+      cand.rowsAll.forEach(r => { r.aff = scoreAffinite(r.a, cand.aE); r.score = scoreDe(r); });
+      const el = $('#entAnalyse'); if (el) el.innerHTML = bandeauAnalyseEnt(cand.aE);
+      cand.rows.slice(0, cand.pos).forEach(r => majCandidat(r, e, slot));
+      retrierCandidats();
+    }).catch(() => { const el = $('#entAnalyse'); if (el) el.innerHTML = ''; });
+  }
+
+  const fb = (f, v, lbl) => `<button class="fbtn${v === '' ? ' on' : ''}" data-f="${f}" data-v="${v}" onclick="setFiltre(this)">${lbl}</button>`;
+  $('#panel').innerHTML = `
+    <button class="back" onclick="renderEntreprise('${e.id}')">← ${e.nom}</button>
+    <div class="kicker">Créneau à pourvoir</div>
+    <h2 style="margin-top:2px" class="data">${fmtDH(slot.dh)} <span class="chip ${u.cls}">${u.label}</span></h2>
+    <div class="muted">${e.nom} · ${e.adresse}</div>
+    <div class="muted" id="entAnalyse" style="margin-top:4px">${cand.aE ? bandeauAnalyseEnt(cand.aE) : '🏢 Analyse IA de l\'entreprise en cours…'}</div>
+    ${enConflit.length ? `<p class="muted" style="margin:8px 0 0">⛔ ${enConflit.length} étudiant(s) écarté(s) d'office : entretien déjà prévu en conflit d'horaire avec ce créneau (durée 1 h).</p>` : ''}
+    <div class="card" style="padding:10px 14px">
+      <div class="kicker">Filtres selon la demande de l'employeur</div>
+      <div class="row" style="margin-top:7px"><span class="flbl">Promo</span>
+        ${fb('promo','','Toutes')}${fb('promo','MCO','MCO')}${fb('promo','NDRC','NDRC')}</div>
+      <div class="row" style="margin-top:6px"><span class="flbl">Sexe</span>
+        ${fb('sexe','','Tous')}${fb('sexe','F','Femmes')}${fb('sexe','H','Hommes')}</div>
+      <div class="row" style="margin-top:6px"><span class="flbl">Permis</span>
+        ${fb('permis','','Indifférent')}${fb('permis','oui','🚗 Avec permis')}${fb('permis','non','Sans permis')}</div>
+    </div>
+    <p class="muted" style="margin-top:10px" id="candInfo"></p>
+    <div id="cands"></div>
+    <div class="row card" style="padding:10px 14px">
+      <span class="muted">Proposer davantage :</span>
+      <button class="ghost" onclick="ajouterCandidats(5)">+5</button>
+      <button class="ghost" onclick="ajouterCandidats(10)">+10</button>
+      <button class="ghost" onclick="ajouterCandidats(15)">+15</button>
+      <span class="muted sp" id="candRestants"></span>
+    </div>`;
+  appliquerFiltres();
+}
+
+/* Bandeau résumant l'analyse IA de l'entreprise sous l'adresse du créneau.
+   FIABILITÉ : si l'IA n'a pas pu identifier l'entreprise avec certitude
+   (infos_suffisantes: false), on l'affiche clairement — rien n'est inventé.
+   Les EXIGENCES (colonne E d'AGENDA) sont mises en valeur, et les postes sont
+   des postes ENVISAGEABLES, pas des postes garantis. */
+function bandeauAnalyseEnt(aE) {
+  if (!aE) return '';
+  const postes = aE.postes_envisageables || aE.postes || []; // compat anciennes analyses
+  const doute = aE.infos_suffisantes === false;
+  return (doute ? `<span class="chip warn">⚠ Entreprise peu documentée</span> <b style="color:var(--warn)">L'IA n'invente rien : compléter le nom, l'adresse ou les commentaires (colonne E) pour affiner.</b><br>` : '') +
+    `🏢 <b>${aE.secteur || (doute ? 'Secteur inconnu' : 'Secteur ?')}</b> — ${aE.activite || ''}` +
+    (postes.length ? `<br>💼 Postes envisageables : ${postes.join(', ')}` : '') +
+    ((aE.criteres || []).length ? `<br>📌 <b style="color:var(--warn)">Exigences (colonne E) : ${aE.criteres.join(' · ')}</b>` : '');
+}
+
+/* Clic sur un bouton de filtre : met à jour l'état + l'apparence, ré-applique. */
+function setFiltre(btn) {
+  if (!cand || vue.type !== 'candidats') return;
+  cand.filtres[btn.dataset.f] = btn.dataset.v;
+  document.querySelectorAll(`.fbtn[data-f="${btn.dataset.f}"]`)
+    .forEach(b => b.classList.toggle('on', b === btn));
+  appliquerFiltres();
+}
+
+/* Recalcule la liste visible selon les filtres, sans refaire les appels déjà
+   faits (itinéraires/analyses conservés dans les objets r). */
+function appliquerFiltres() {
+  if (!cand) return;
+  const f = cand.filtres;
+  cand.rows = cand.rowsAll.filter(r => {
+    // Promo : comparaison normalisée (colonne M du Sheet : "BTS MCO 1", "ndrc"…)
+    if (f.promo && normTxt(r.s.promo).indexOf(normTxt(f.promo)) === -1) return false;
+    if (f.sexe && r.s.sexe !== f.sexe) return false;
+    // Permis : la colonne du Sheet est COMPLÉTÉE par la détection dans le CV
+    // (clé "permis" de l'analyse IA, stockée dans ANALYSES_IA).
+    const permisEff = r.s.permis || (r.a && r.a.permis) || '';
+    if (f.permis === 'oui' && permisEff !== 'oui') return false;
+    if (f.permis === 'non' && permisEff === 'oui') return false;
+    return true;
+  }).sort((x, y) => y.score - x.score);
+  cand.pos = 0;
+  const box = $('#cands'); if (box) box.innerHTML = '';
+  const info = $('#candInfo');
+  if (info) info.textContent = cand.rows.length + ' profil(s) correspondant aux filtres. ' +
+    'Les scores ≈ s\'affinent en direct avec les itinéraires réels et les analyses manquantes. ' +
+    '« Ne répond pas », « Pas intéressé » ou « Pas dispo » retire l\'étudiant et propose le suivant.';
+  ajouterCandidats(10);
+}
+
+/* Ajoute n candidats de plus (dans l'ordre du scoring), lance leur affinage. */
+function ajouterCandidats(n) {
+  if (!cand || vue.type !== 'candidats') return;
+  const nouveaux = cand.rows.slice(cand.pos, cand.pos + n);
+  cand.pos += nouveaux.length;
+  const el = $('#candRestants');
+  if (el) el.textContent = (cand.rows.length - cand.pos) + ' profil(s) en réserve';
+  if (!nouveaux.length) { toast('Tous les profils correspondant aux filtres sont déjà affichés'); return; }
+  const box = $('#cands');
+  nouveaux.forEach(r => box.insertAdjacentHTML('beforeend', carteCandidat(r, cand.e, cand.slot)));
+  enrichirCandidats(nouveaux);
+}
+
+/* Affinage en arrière-plan (itinéraires réels + analyses), jamais bloquant.
+   Les données déjà chargées ne sont JAMAIS re-demandées (utile quand on
+   change de filtre : les cartes réapparaissent déjà affinées). */
+function enrichirCandidats(liste) {
+  const { e, slot } = cand;
+  const seq = seqCandidats;
+  let enAttente = 0;
+  const fini = () => { if (--enAttente === 0 && seq === seqCandidats) retrierCandidats(); };
+
+  liste.forEach(r => {
+    if (!r.a) {
+      enAttente++;
+      Api.analyser(r.s).then(res => {
+        r.a = res.analyse; DB.analyses[r.s.id] = res.analyse;
+      }).catch(() => {}).finally(() => {
+        if (seq !== seqCandidats) return;
+        r.aff = scoreAffinite(r.a, cand.aE); // l'affinité dépend des DEUX analyses
+        r.score = scoreDe(r); majCandidat(r, e, slot); fini();
+      });
+    }
+    if (!r.it) {
+      enAttente++;
+      const origineEtu = ((r.s.ville || '') + ' ' + (r.s.departement || '') + ' France').replace(/\s+/g, ' ').trim();
+      (EN_PROD
+        ? Api.itineraire(origineEtu, e.adresse, slot.dh)
+        : Api.itineraire(r.s, e, slot.dh))
+        .then(it => {
+          r.it = it;
+          r.trajetPts = it.erreur ? (r.km == null ? 0 : ptsTrajet(estMin(r.km))) : ptsTrajet(it.dureeTotale);
+        })
+        .catch(() => { r.it = { erreur:'calcul impossible' }; })
+        .finally(() => {
+          if (seq !== seqCandidats) return;
+          r.score = scoreDe(r); majCandidat(r, e, slot); fini();
+        });
+    }
+  });
+  if (enAttente === 0) retrierCandidats();
+}
+
+/* "Ne répond pas" / "Pas intéressé" / "Pas dispo" : carte grisée + barrée,
+   étudiant écarté du scoring, suivant proposé automatiquement. L'action est
+   tracée dans HISTORIQUE + dans la feuille SUIVI_APPELS (une ligne par
+   étudiant, une colonne "Entretien n" par tentative, avec l'entreprise et
+   sa localisation). */
+function marquerExclu(etuId, motif) {
+  if (!cand || EXCLUS.has(etuId)) return;
+  EXCLUS.set(etuId, motif);
+  const r = cand.rows.find(x => x.s.id === etuId);
+  if (r) majCandidat(r, cand.e, cand.slot);
+  retrierCandidats();
+  ajouterCandidats(1); // on propose le suivant dans la foulée
+  if (!r) return;
+  const s = r.s, nom = s.prenom + ' ' + s.nom;
+  toast(`${nom} — ${motif}. Candidat suivant proposé.`);
+  Api.marquerExclu(s, cand.e, cand.slot.dh, motif)
+    .then(() => { if (EN_PROD) DB.historique.unshift({ date:new Date().toISOString(), etudiant:nom, tel:s.tel, entreprise:cand.e.nom, creneau:cand.slot.dh, action:motif, par:'vous' }); })
+    .catch(() => toast('⚠ Trace non enregistrée dans l\'historique'));
+}
+
+function carteCandidat(r, e, slot) {
+  const provisoire = !r.it || !r.a;
+  const motifExclu = EXCLUS.get(r.s.id);
+  const bl = estBlackliste(r.s) ? statsEntretiens(r.s) : null;
+  return `
+    <div class="card${motifExclu ? ' off' : ''}" id="cand-${r.s.id}">
+      <div class="row">
+        <h3>${r.s.prenom} ${r.s.nom}</h3>${noteBadge(r.s.note)}
+        ${bl ? `<span class="chip bl" title="Blacklist automatique : ${BL_REFUS} « Refusé » ou ${BL_PAS_VENU} « Pas venu » dans l'historique — proposé quand même, à traiter en connaissance de cause">⬛ BLACKLIST · ${bl.refus} refus · ${bl.pasVenu} pas venu</span>` : ''}
+        ${motifExclu ? `<span class="chip urgent">📵 ${motifExclu}</span>` : ''}
+        <span class="sp score">${provisoire ? '≈ ' : ''}${r.score}<small>/100</small></span>
+      </div>
+      <div class="bar"><i style="width:${r.score}%"></i></div>
+      <div class="row" style="margin-top:8px">
+        ${r.s.sexe ? `<span class="sexe ${r.s.sexe}">${r.s.sexe}</span>` : ''}
+        <span class="chip gray">${r.s.promo || 'BTS'}</span>
+        ${(r.s.permis || (r.a && r.a.permis)) === 'oui' ? '<span class="chip gray">🚗 Permis</span>' : ''}
+        ${anomaliesEtudiant(r.s).length ? `<span class="chip warn" title="Données à corriger dans le Sheet (onglet Données) — analyses non fiables tant que ce n'est pas corrigé">⚠ ${anomaliesEtudiant(r.s).join(' · ')}</span>` : ''}
+        ${r.entretienProche ? `<span class="chip warn">⚠ Entretien à ${fmtDH(r.entretienProche.dh)}${r.entretienProche.entreprise ? ' · ' + r.entretienProche.entreprise : ''}</span>` : ''}
+        ${(r.s.entretiens || []).length ? `<button class="ghost" style="padding:2px 10px" onclick="toggleEntretiens('${r.s.id}')">📅 ${r.s.entretiens.length} entretien(s)</button>` : ''}
+        <a class="tel" href="tel:0${r.s.tel}">📞 0${String(r.s.tel).replace(/(\d{1})(?=(\d{2})+$)/g,'$1 ')}</a>
+        <span class="muted">· ${r.s.ville}</span>
+      </div>
+      <div id="ents-${r.s.id}" hidden style="margin-top:8px"></div>
+      <div class="muted" style="margin-top:6px">🤖 ${r.a
+        ? `${r.a.resume} ${r.a.alerte ? `<b style="color:var(--warn)">⚠ ${r.a.alerte}</b>` : ''}`
+        : 'Analyse du CV en cours…'}</div>
+      ${r.it ? renderItin(r.it)
+        : `<div class="itin muted">🚇 Itinéraire réel en cours de calcul…${r.km != null ? ` <span class="data">≈ ${Math.round(r.km)} km à vol d'oiseau</span>` : ''}</div>`}
+      <div class="row" style="margin-top:10px">
+        ${motifExclu ? `<span class="muted">Écarté pour ce placement (${motifExclu.toLowerCase()}).</span>` : `
+        <button class="act" onclick="placer('${e.id}', ${slot.index}, '${r.s.id}')">Placer sur ce créneau</button>
+        <button class="ghost" onclick="marquerExclu('${r.s.id}', 'Ne répond pas')">📵 Ne répond pas</button>
+        <button class="ghost" onclick="marquerExclu('${r.s.id}', 'Pas intéressé')">Pas intéressé</button>
+        <button class="ghost" onclick="marquerExclu('${r.s.id}', 'Pas disponible')">Pas dispo</button>`}
+      </div>
+    </div>`;
+}
+
+function majCandidat(r, e, slot) {
+  const el = document.getElementById('cand-' + r.s.id);
+  if (el) el.outerHTML = carteCandidat(r, e, slot);
+}
+
+/* Une fois tous les itinéraires/analyses arrivés : retri unique, sans à-coups.
+   Les candidats écartés (ne répond pas / pas intéressé / pas dispo) restent
+   visibles, grisés, en bas de liste. */
+function retrierCandidats() {
+  const box = document.getElementById('cands');
+  if (!box || !cand) return;
+  const affiches = cand.rows.slice(0, cand.pos);
+  const actifs = affiches.filter(r => !EXCLUS.has(r.s.id)).sort((x, y) => y.score - x.score);
+  const exclus = affiches.filter(r => EXCLUS.has(r.s.id));
+  [...actifs, ...exclus].forEach(r => {
+    const el = document.getElementById('cand-' + r.s.id);
+    if (el) box.appendChild(el);
+  });
+}
+
+function renderItin(it) {
+  // Défensif : toute réponse inattendue du serveur (sans "etapes") est affichée
+  // comme indisponible au lieu de faire planter le rendu de TOUTE la liste.
+  if (!it || it.erreur || !Array.isArray(it.etapes)) {
+    return `<div class="itin muted">Itinéraire indisponible (${it && it.erreur ? it.erreur : 'réponse inattendue du serveur'})</div>`;
+  }
+  return `<div class="itin">
+    <div class="total">🚇 ${it.dureeTotale} min · ${it.correspondances} correspondance(s) · <b>départ ${fmtH(it.depart)}</b> → arrivée ${fmtH(it.arrivee)} <span class="muted">pour être à l'heure au rendez-vous</span></div>
+    ${it.etapes.map(l => l.ligne
+      ? `<div class="leg"><span class="t">${fmtH(l.depart)}</span><span class="lb" style="background:${l.couleur}">${l.mode === 'RER' ? 'RER ' : ''}${l.ligne}</span><span>${l.de || ''} → ${l.vers || ''} · ${l.duree} min</span></div>`
+      : `<div class="leg"><span class="t">${fmtH(l.depart)}</span><span class="lb walk">🚶</span><span>Marche · ${l.duree} min</span></div>`
+    ).join('')}
+  </div>`;
+}
+
+/* ----- Placement : écrit dans le Sheet + historique ----- */
+async function placer(entId, slotIdx, etuId) {
+  const e = DB.entreprises.find(x => x.id === entId);
+  const s = DB.etudiants.find(x => x.id === etuId);
+  const nom = s.prenom + ' ' + s.nom;
+  const slotDh = e.creneaux.find(c => c.index === slotIdx).dh;
+  // GARDE-FOU : entre la sélection et le clic, la date a pu passer (onglet
+  // laissé ouvert) — un créneau passé n'est JAMAIS pourvu.
+  if (estPasse(slotDh)) {
+    toast('⛔ Ce créneau est maintenant passé — marqué NON POURVU, placement impossible.');
+    renderEntreprise(entId);
+    return;
+  }
+  // ⚠ Ne jamais utiliser window.confirm ici : bloqué dans l'iframe Apps Script,
+  // il renvoyait false en silence → le bouton "Placer" ne faisait rien.
+  const ok = await confirmer(`Placer ${nom} ?`,
+    `Créneau ${fmtDH(slotDh)} chez ${e.nom}.\n\nLa case sera remplie dans le Sheet et l'événement Google Agenda créé par l'automatisation existante.`);
+  if (!ok) return;
+  let res;
+  try { res = await Api.placer(e, slotIdx, nom, s.tel); }
+  catch (err) { toast('❌ Erreur serveur : ' + (err && err.message ? err.message : 'placement impossible')); return; }
+  if (!res.ok) { toast('❌ ' + res.erreur); return; }
+  // L'entretien rejoint immédiatement l'historique local de l'étudiant : il
+  // bloque dès maintenant les créneaux en conflit (1 h) partout dans l'appli.
+  (s.entretiens = s.entretiens || []).push({ dh: slotDh, entreprise: e.nom, statut: '' });
+  DB.historique.unshift({ date:new Date().toISOString(), etudiant:nom, tel:s.tel,
+    entreprise:e.nom, creneau:slotDh, action:'Placé sur créneau', par:'vous' });
+  if (EN_PROD) DB.entreprises = (await Api.refresh()).entreprises;
+  toast(`✅ ${nom} placé(e) chez ${e.nom}`);
+  drawMarkers();
+
+  // ----- Mail de confirmation (adresse = colonne E de PREINSCRITS) -----
+  if (s.mail) {
+    const okMail = await confirmer('Envoyer le mail de confirmation ?',
+      `Un récapitulatif (date, heure, lieu) sera envoyé à ${s.mail}.\n\nSi la colonne H d'AGENDA contient un lien Drive, la fiche de poste sera jointe.`);
+    if (okMail) {
+      try {
+        const rm = await Api.envoyerMail(s, e, slotDh);
+        if (rm.ok) {
+          toast(`📧 Confirmation envoyée à ${s.mail}${rm.fiche ? ' (fiche de poste jointe)' : ''}`);
+          DB.historique.unshift({ date:new Date().toISOString(), etudiant:nom, tel:s.tel,
+            entreprise:e.nom, creneau:slotDh, action:'Mail de confirmation envoyé', par:'vous' });
+        } else toast('❌ ' + rm.erreur);
+      } catch (err) { toast('❌ Mail non envoyé : ' + (err && err.message ? err.message : 'erreur serveur')); }
+    }
+  } else {
+    toast(`✅ ${nom} placé(e) — ✉️ pas d'adresse mail en colonne E, confirmation non envoyée`);
+  }
+  renderEntreprise(entId);
+}
+
+/* ----- Masquage : fond rouge sur A:H dans AGENDA, disparition de l'appli ----- */
+async function masquer(entId) {
+  const e = DB.entreprises.find(x => x.id === entId);
+  const ok = await confirmer(`Masquer ${e.nom} ?`,
+    `Sa ligne d'infos (colonnes A à H) passera en fond rouge dans la feuille AGENDA — les blocs d'entretiens ne sont pas touchés — et l'entreprise disparaîtra de la carte et de la liste.`);
+  if (!ok) return;
+  const res = await Api.masquer(e);
+  if (!res.ok) { toast('❌ Impossible de masquer'); return; }
+  if (EN_PROD) DB.entreprises = (await Api.refresh()).entreprises;
+  toast(`${e.nom} masquée — ligne rouge dans AGENDA`);
+  drawMarkers();
+  renderListe();
+}
+
+/* =====================================================================
+   HISTORIQUE + ANALYSES
+   ===================================================================== */
+/* ----- Historique des entretiens d'un étudiant (repli/dépli dans sa carte) ----- */
+function toggleEntretiens(etuId) {
+  const el = document.getElementById('ents-' + etuId);
+  if (!el) return;
+  if (!el.hidden) { el.hidden = true; return; }
+  const s = DB.etudiants.find(x => x.id === etuId);
+  el.innerHTML = htmlEntretiens(s);
+  el.hidden = false;
+}
+
+function htmlEntretiens(s) {
+  // L'index d'origine (i) est conservé AVANT le tri : c'est lui qui identifie
+  // l'entretien dans s.entretiens quand on change son statut. Les cellules
+  // sans date détectable sont affichées en fin de liste, avec leur texte brut.
+  // NB : pas de regex à guillemets ici (split/join) — les littéraux /"/ sont
+  // fragiles au copier-coller vers l'éditeur Apps Script.
+  const ents = (s.entretiens || []).map((en, i) => ({ en, i }))
+    .sort((a, b) => String(a.en.dh || '9999').localeCompare(String(b.en.dh || '9999')));
+  if (!ents.length) return '<div class="itin muted">Aucun entretien enregistré (colonnes AA → AL).</div>';
+  const lignes = ents.map(({ en, i }) => {
+    const infobulle = String(en.brut || '').split('"').join('&quot;');
+    let droite;
+    if (!en.dh) {
+      droite = (en.statut ? chipStatut(en.statut) : '') +
+        '<span class="chip gray" title="Date non détectée dans la cellule AA→AL — voir l\'onglet Données">Date illisible</span>';
+    } else if (estPasse(en.dh)) {
+      droite = (en.statut ? chipStatut(en.statut) : '<span class="chip warn">Statut à renseigner</span>') +
+        ' ' + selectStatut(s.id, i, en.statut);
+    } else {
+      droite = chipStatut(en.statut);
+    }
+    return `<div class="leg" title="${infobulle}">
+      <span class="t">${en.dh ? fmtDH(en.dh) : '— / —'}</span>
+      <span>${en.entreprise || en.brut || 'Entretien ?'}${en.lieu ? ` <span class="muted">· ${en.lieu}</span>` : ''}</span>
+      <span style="margin-left:auto; display:inline-flex; gap:6px; align-items:center">${droite}</span>
+    </div>`;
+  });
+  return `<div class="itin">${lignes.join('')}</div>`;
+}
+
+/* Sélecteur de statut d'un entretien PASSÉ : le choix est écrit dans la 3e
+   colonne du bloc AGENDA (source de vérité) — les colonnes AA→AL de
+   PREINSCRITS se resynchronisent ensuite toutes seules via le script du Sheet. */
+function selectStatut(etuId, idx, statut) {
+  const canon = statutCanon(statut);
+  const opts = ['Accepté', 'En attente', 'Refusé', 'Pas venu', 'Absence justifiée'];
+  return `<select class="stsel" onchange="changerStatut('${etuId}', ${idx}, this.value)"
+    title="Entretien passé : le statut choisi est écrit dans le bloc AGENDA — les colonnes AA→AL se mettent à jour automatiquement">
+    <option value=""${canon ? '' : ' selected'} disabled>— statut ?</option>
+    ${opts.map(o => `<option value="${o}"${o === canon ? ' selected' : ''}>${o}</option>`).join('')}
+  </select>`;
+}
+
+async function changerStatut(etuId, idx, statut) {
+  const s = DB.etudiants.find(x => x.id === etuId);
+  const en = s && (s.entretiens || [])[idx];
+  if (!en || !statut) return;
+  const ancien = en.statut;
+  en.statut = statut; // optimiste : la blacklist et les vues se recalculent tout de suite
+  try {
+    const r = await Api.changerStatut(s, en, statut);
+    if (!r.ok) throw new Error(r.erreur || 'échec');
+    toast(`✅ Statut « ${statut} » écrit dans le bloc AGENDA — AA→AL se met à jour automatiquement` +
+      (estBlackliste(s) ? ' — ⬛ étudiant désormais blacklisté' : ''));
+    if (EN_PROD) rafraichir(false); // recharge les créneaux : le bloc AGENDA a changé
+  } catch (err) {
+    en.statut = ancien;
+    toast('❌ Statut non enregistré : ' + (err && err.message ? err.message : 'erreur serveur'));
+  }
+  // Re-rendu de tout ce qui affiche cet historique
+  const el = document.getElementById('ents-' + etuId);
+  if (el && !el.hidden) el.innerHTML = htmlEntretiens(s);
+  const page = document.querySelector('#tab-entretiens.on');
+  if (page) { const inp = $('#entSearch'); renderEntretiens(inp ? inp.value : ''); }
+}
+
+/* ----- Onglet "Entretiens" : historique SIMPLIFIÉ par étudiant -----
+   Lecture des colonnes AA → AL de PREINSCRITS + placements de la session.
+   RÈGLE : un entretien SANS statut n'a pas encore eu lieu → il bloque les
+   créneaux en conflit (1 h) et déclenche l'avertissement à ±2 h. */
+function renderEntretiens(filtre) {
+  const q = normTxt(filtre || '');
+  const avec = DB.etudiants
+    .filter(s => (s.entretiens || []).length)
+    .filter(s => !q || normTxt(s.prenom + ' ' + s.nom).indexOf(q) !== -1)
+    .sort((a, b) => normTxt(a.nom + a.prenom).localeCompare(normTxt(b.nom + b.prenom)));
+  $('#tab-entretiens').innerHTML = `
+    <div class="kicker">Entretiens par étudiant</div>
+    <p class="muted" style="margin-top:4px">Colonnes AA → AL de PREINSCRITS 26/27 (remplies automatiquement par le script du Sheet : une cellule = un entretien complet — entreprise, localisation, date/heure, statut), chargées pour <b>tous</b> les étudiants, entretiens passés compris. Un entretien <b>sans statut</b> n'a pas encore eu lieu : l'étudiant n'est jamais proposé sur un créneau en conflit (durée 1 h) et un avertissement s'affiche à ±2 h. Dès que la date est <b>passée</b>, le statut devient modifiable ici : il est écrit dans la <b>3e colonne du bloc AGENDA</b> (source de vérité) et AA → AL se resynchronise automatiquement. ⬛ <b>Blacklist</b> : ${BL_REFUS} « Refusé » ou ${BL_PAS_VENU} « Pas venu » → l'étudiant reste proposé mais signalé par un badge noir.</p>
+    <input id="entSearch" placeholder="Rechercher un étudiant…" value="${filtre || ''}"
+      oninput="renderEntretiens(this.value)"
+      style="margin-top:10px; padding:8px 12px; border:1px solid var(--line); border-radius:9px; font:14px 'Barlow', sans-serif; width:280px">
+    ${avec.length ? avec.map(s => {
+      const t = statsEntretiens(s);
+      return `<div class="card">
+      <div class="row"><h3>${s.prenom} ${s.nom}</h3>${noteBadge(s.note)}
+        <span class="chip gray">${s.promo || 'BTS'}</span>
+        ${estBlackliste(s) ? `<span class="chip bl">⬛ BLACKLIST · ${t.refus} refus · ${t.pasVenu} pas venu</span>` : ''}
+        ${s.placable === false ? `<span class="chip gray">Hors placement — ${s.motifNonPlacable || 'placé / désinscrit'}</span>` : ''}
+        <span class="muted sp">${(s.entretiens || []).filter(en => !en.statut && en.dh && !estPasse(en.dh)).length} à venir · ${t.refus} refus · ${t.pasVenu} pas venu · ${(s.entretiens || []).length} au total</span></div>
+      ${htmlEntretiens(s)}
+    </div>`;
+    }).join('') : `<p class="muted" style="margin-top:12px">Aucun étudiant avec un entretien enregistré${q ? ' pour cette recherche' : ''}.</p>`}`;
+  const inp = $('#entSearch');
+  if (inp && filtre != null) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+}
+
+/* =====================================================================
+   QUALITÉ DES DONNÉES — contrôle des formats (ville, CV, liens, adresses…)
+   But : chaque anomalie est signalée AVANT de fausser une analyse. Tant
+   qu'une ville n'est pas géocodable ou qu'un lien CV est cassé, les
+   itinéraires, scores et analyses IA de la ligne concernée ne sont pas
+   fiables — on préfère le dire que de calculer dans le vide.
+   ===================================================================== */
+function anomalies() {
+  const pb = [];
+  (DB.etudiants || []).forEach(s => {
+    if (s.placable === false) return; // placés/désinscrits : hors périmètre de placement
+    const qui = `${s.prenom} ${s.nom}`;
+    const l = s.ligne ? `ligne ${s.ligne}` : '';
+    if (!s.ville) pb.push({ type:'etu', qui, pb:'Ville manquante — pas de carte, pas d\'itinéraire, score trajet par défaut', ou:`PREINSCRITS ${l}, colonne Ville` });
+    else if (!s.geo) pb.push({ type:'etu', qui, pb:`Ville non géocodable : « ${s.ville} » — vérifier l'orthographe / le format (ville seule, sans mention parasite)`, ou:`PREINSCRITS ${l}, colonne Ville` });
+    else if (/https?:|@|\d{6,}/.test(s.ville)) pb.push({ type:'etu', qui, pb:`Format de ville suspect : « ${s.ville} »`, ou:`PREINSCRITS ${l}, colonne Ville` });
+    if (!s.cvUrl) {
+      if (s.cvBrut) pb.push({ type:'etu', qui, pb:`Lien CV invalide : la cellule contient « ${String(s.cvBrut).slice(0, 40)} » mais aucune URL exploitable (lien cliquable, HYPERLINK ou URL en clair) — l'analyse IA tournerait à vide`, ou:`PREINSCRITS ${l}, colonne CV (AM)` });
+      else pb.push({ type:'etu', qui, pb:'CV manquant — analyse IA impossible, score retail par défaut (13/25)', ou:`PREINSCRITS ${l}, colonne CV (AM)` });
+    } else if (!/^https?:/i.test(s.cvUrl)) {
+      pb.push({ type:'etu', qui, pb:`Format de lien CV invalide : « ${String(s.cvUrl).slice(0, 40)} »`, ou:`PREINSCRITS ${l}, colonne CV (AM)` });
+    }
+    if (s.mail && !/@/.test(s.mail)) pb.push({ type:'etu', qui, pb:`Adresse mail invalide : « ${s.mail} » — le mail de confirmation échouera`, ou:`PREINSCRITS ${l}, colonne E` });
+    else if (!s.mail) pb.push({ type:'etu', qui, pb:'Mail manquant — pas de confirmation d\'entretien possible', ou:`PREINSCRITS ${l}, colonne E` });
+    (s.entretiens || []).forEach(en => {
+      if (!en.dh) pb.push({ type:'etu', qui, pb:`Entretien illisible dans l'historique : « ${String(en.brut || '').slice(0, 60)} » — aucune date détectée, l'anti-collision d'horaires ne peut pas le prendre en compte`, ou:`PREINSCRITS ${l}, colonnes AA → AL` });
+    });
+  });
+  (DB.entreprises || []).forEach(e => {
+    const l = e.ligne ? `ligne ${e.ligne}` : '';
+    if (!e.adresse) pb.push({ type:'ent', qui:e.nom, pb:'Adresse manquante — invisible sur la carte, itinéraires impossibles', ou:`AGENDA ${l}, colonne C` });
+    else if (!e.geo) pb.push({ type:'ent', qui:e.nom, pb:`Adresse non géocodable : « ${e.adresse} » — invisible sur la carte`, ou:`AGENDA ${l}, colonne C` });
+    (e.creneaux || []).forEach(c => {
+      if (isNaN(new Date(c.dh))) pb.push({ type:'ent', qui:e.nom, pb:`Date de créneau illisible : « ${c.dh} » (bloc ${c.index + 1})`, ou:`AGENDA ${l}, bloc ${c.index + 1}` });
+    });
+  });
+  return pb;
+}
+
+/* Anomalies d'UN étudiant, en version courte, pour la carte candidat */
+function anomaliesEtudiant(s) {
+  const a = [];
+  if (!s.ville) a.push('ville manquante');
+  else if (!s.geo) a.push('ville non géocodable');
+  if (!s.cvUrl) a.push(s.cvBrut ? 'lien CV invalide' : 'CV manquant');
+  else if (!/^https?:/i.test(s.cvUrl)) a.push('lien CV invalide');
+  if (!s.mail || !/@/.test(s.mail)) a.push('mail absent/invalide');
+  return a;
+}
+
+function renderDonnees() {
+  const pb = anomalies();
+  $('#tab-donnees').innerHTML = `
+    <div class="kicker">Qualité des données · ${pb.length} anomalie(s)</div>
+    <p class="muted" style="margin-top:4px">Contrôle automatique des <b>formats</b> : villes (géocodables ?), liens CV (URL exploitable ?), mails, adresses d'entreprises et dates de créneaux. Tant qu'une anomalie n'est pas corrigée dans le Sheet, les analyses correspondantes (itinéraires, scores, analyses IA, mails) ne sont <b>pas fiables</b> — l'appli préfère le signaler plutôt que de calculer au hasard. Corriger dans la feuille indiquée, puis <b>recharger la page</b> (↻ Actualiser ne relit que les entreprises ; les étudiants sont relus au chargement complet).</p>
+    ${pb.length ? `<table><tr><th></th><th>Qui</th><th>Problème</th><th>Où corriger</th></tr>
+      ${pb.map(p => `<tr><td>${p.type === 'etu' ? '🎓' : '🏢'}</td><td><b>${p.qui}</b></td><td>${p.pb}</td><td class="muted">${p.ou}</td></tr>`).join('')}
+    </table>`
+    : '<p style="margin-top:14px">✅ Aucune anomalie détectée : villes géocodées, liens CV exploitables, adresses et créneaux lisibles. Les analyses sont fondées sur des données propres.</p>'}`;
+}
+
+/* Pastille de comptage sur l'onglet "Données" (mise à jour au boot + à chaque refresh) */
+function majBadgeDonnees() {
+  const b = document.querySelector('nav button[data-tab="donnees"]');
+  if (!b || !DB) return;
+  const n = anomalies().length;
+  b.innerHTML = n ? `Données<span class="navbadge">${n}</span>` : 'Données ✓';
+}
+
+function renderHistorique() {
+  const h = DB.historique;
+  $('#tab-historique').innerHTML = `
+    <div class="kicker">Historique des envois et placements</div>
+    ${h.length ? `<table><tr><th>Quand</th><th>Étudiant</th><th>Tél</th><th>Entreprise</th><th>Créneau</th><th>Action</th><th>Par</th></tr>
+      ${h.map(r => `<tr><td class="data">${fmtDH(r.date)}</td><td><b>${r.etudiant}</b></td>
+        <td><a class="tel" href="tel:0${r.tel}">0${r.tel}</a></td><td>${r.entreprise}</td>
+        <td class="data">${r.creneau ? fmtDH(r.creneau) : '—'}</td><td>${r.action}</td><td class="muted">${r.par}</td></tr>`).join('')}
+    </table>` : '<p class="muted" style="margin-top:10px">Aucun envoi enregistré pour le moment. Les placements effectués depuis la carte apparaîtront ici.</p>'}`;
+}
+
+function renderAnalyses() {
+  $('#tab-analyses').innerHTML = `
+    <div class="kicker">Analyses IA des CV — cache persistant</div>
+    <p class="muted" style="margin-top:4px">Chaque CV n'est analysé qu'une fois (Mistral). Le résultat est stocké dans la feuille <b>ANALYSES_IA</b> et réutilisé à chaque lancement. Seuls les étudiants encore à placer sont listés.</p>
+    ${DB.etudiants.filter(s => s.placable !== false).map(s => {
+      const a = DB.analyses[s.id];
+      return `<div class="card">
+        <div class="row"><h3>${s.prenom} ${s.nom}</h3>${noteBadge(s.note)}
+          ${!s.cvUrl ? `<span class="chip warn" title="Voir l'onglet Données">⚠ ${s.cvBrut ? 'Lien CV invalide' : 'CV manquant'}</span>` : ''}
+          <span class="sp">${a ? '<span class="chip ok">En cache ✓</span>' : `<button class="ghost" onclick="lancerAnalyse('${s.id}')">Analyser le CV</button>`}</span></div>
+        ${a ? `<div class="muted" style="margin-top:6px">${a.resume}</div>
+          <div class="row" style="margin-top:6px">${(a.secteurs||[]).map(x=>`<span class="chip ok">${x}</span>`).join('')}${(a.competences||[]).map(c=>`<span class="chip gray">${c}</span>`).join('')}${a.permis === 'oui' ? '<span class="chip gray">🚗 Permis (CV)</span>' : ''}
+          <span class="sp score">${a.score_retail}<small>/25 retail</small></span></div>
+          ${(a.centres_interet||[]).length ? `<div class="muted" style="margin-top:4px">Centres d'intérêt : ${a.centres_interet.join(' · ')}</div>` : ''}
+          ${a.alerte ? `<div style="color:var(--warn);margin-top:4px">⚠ ${a.alerte}</div>` : ''}` : '<div class="muted" style="margin-top:6px">Pas encore analysé.</div>'}
+      </div>`;
+    }).join('')}
+    <div class="kicker" style="margin-top:26px">Analyses IA des entreprises — feuille ANALYSES_ENTREPRISES</div>
+    <p class="muted" style="margin-top:4px">Secteur, activité, <b>postes envisageables</b> et <b>exigences de la colonne E d'AGENDA</b> (reprises fidèlement, jamais inventées). Si l'entreprise n'est pas connue et établie, l'analyse le dit au lieu de broder. Elles alimentent l'affinité candidat ↔ entreprise (15 pts du score). Une entreprise n'est ré-analysée que si ses commentaires changent.</p>
+    ${DB.entreprises.map(e => {
+      const aE = (DB.analysesEntreprises || {})[cleEnt(e.nom)];
+      const postes = aE ? (aE.postes_envisageables || aE.postes || []) : [];
+      return `<div class="card">
+        <div class="row"><h3>${e.nom}</h3>
+          ${aE && aE.infos_suffisantes === false ? '<span class="chip warn">⚠ Infos insuffisantes — rien d\'inventé</span>' : ''}
+          <span class="sp">${aE ? '<span class="chip ok">En cache ✓</span>' : `<button class="ghost" onclick="lancerAnalyseEnt('${e.id}')">Analyser l'entreprise</button>`}</span></div>
+        ${aE ? `<div class="muted" style="margin-top:6px"><b>${aE.secteur || (aE.infos_suffisantes === false ? 'Secteur inconnu' : '')}</b>${aE.secteur ? ' — ' : ''}${aE.activite || ''}</div>
+          ${aE.infos_suffisantes === false ? `<div class="muted" style="margin-top:4px">Compléter le nom, l'adresse ou la colonne E (commentaires) d'AGENDA pour une analyse fondée.</div>` : ''}
+          <div class="row" style="margin-top:6px">${postes.length ? '<span class="flbl">Postes envisageables</span>' : ''}${postes.map(p => `<span class="chip gray">${p}</span>`).join('')}
+            ${aE.promo_conseillee ? `<span class="chip ok">Promo conseillée : ${aE.promo_conseillee}</span>` : ''}</div>
+          ${(aE.criteres || []).length ? `<div class="row" style="margin-top:6px"><span class="flbl">Exigences (col. E)</span>${aE.criteres.map(x => `<span class="chip warn">📌 ${x}</span>`).join('')}</div>` : ''}`
+        : '<div class="muted" style="margin-top:6px">Pas encore analysée.</div>'}
+      </div>`;
+    }).join('')}`;
+}
+async function lancerAnalyseEnt(id) {
+  const e = DB.entreprises.find(x => x.id === id);
+  toast('Analyse de ' + e.nom + '…');
+  const r = await Api.analyserEntreprise(e);
+  (DB.analysesEntreprises = DB.analysesEntreprises || {})[cleEnt(e.nom)] = r.analyse;
+  toast(r.depuisCache ? 'Résultat récupéré depuis le cache ✓' : 'Analyse terminée et mise en cache ✓');
+  renderAnalyses();
+}
+async function lancerAnalyse(id) {
+  const s = DB.etudiants.find(x => x.id === id);
+  toast('Analyse du CV de ' + s.prenom + '…');
+  const r = await Api.analyser(s);
+  DB.analyses[id] = r.analyse;
+  toast(r.depuisCache ? 'Résultat récupéré depuis le cache ✓' : 'Analyse terminée et mise en cache ✓');
+  renderAnalyses();
+}
+
+/* ===================================================================== */
+(async function boot() {
+  if (!EN_PROD) $('#demoBadge').hidden = false;
+  let etape = 'chargement des données serveur (api_getData)';
+  try {
+    DB = await Api.getData();
+    etape = 'initialisation de la carte (Leaflet)';
+    initMap();
+    etape = 'affichage de la liste des entreprises';
+    renderListe();
+    etape = 'contrôle qualité des données';
+    majBadgeDonnees();
+  } catch (err) {
+    afficherErreurBoot(etape, err);
+  }
+})();
+
+/* Plus jamais de page blanche muette : l'erreur RÉELLE et l'étape en échec
+   sont affichées à l'écran, avec les pistes de résolution les plus fréquentes. */
+function afficherErreurBoot(etape, err) {
+  // split/join plutôt qu'une regex /</ : littéral fragile au copier-coller
+  const msg = String((err && err.message) ? err.message : err).split('<').join('&lt;');
+  const html = `
+    <div class="card" style="border-color:var(--urgent)">
+      <h3 style="color:var(--urgent)">⚠ L'application n'a pas pu démarrer</h3>
+      <div class="muted" style="margin-top:6px">Étape en échec : <b>${etape}</b></div>
+      <div style="margin-top:8px; font-family:monospace; font-size:13px; white-space:pre-wrap; background:#F4F6F8; padding:10px 12px; border-radius:8px">${msg || '(aucun message — voir la console du navigateur : F12 → Console)'}</div>
+      <div class="muted" style="margin-top:10px">Pistes, dans l'ordre :<br>
+        1. Dans l'éditeur Apps Script, vérifier qu'il n'existe qu'<b>UNE seule copie</b> du code serveur (un ancien fichier .gs conservé à côté du nouveau provoque « Identifier 'CFG' has already been declared » et fait échouer TOUS les appels).<br>
+        2. Lancer <b>testChargementDonnees</b> depuis l'éditeur (▶ Exécuter) et lire le journal : il rejoue le chargement section par section et pointe la lecture qui casse.<br>
+        3. Re-déployer : Déployer → Gérer les déploiements → ✏️ → Version « Nouvelle version » → Déployer (modifier le code ne suffit pas, il faut une nouvelle version).</div>
+      <div class="row" style="margin-top:10px"><button class="act" onclick="location.reload()">↻ Recharger</button></div>
+    </div>`;
+  const p = $('#panel');
+  if (p) p.innerHTML = html; else document.body.innerHTML = html;
+}
+</script>
+</body>
+</html>
+
+<!-- ===== FIN index.html (v4) — si cette ligne est visible en bas du fichier dans l éditeur Apps Script, le collage est complet ===== -->
