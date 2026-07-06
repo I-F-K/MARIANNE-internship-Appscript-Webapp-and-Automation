@@ -127,7 +127,35 @@ Lorsqu'un étudiant est placé sur un créneau :
 | **Données** | Contrôle des données manquantes ou erronées dans le Google Sheets. Tant qu'une anomalie n'est pas corrigée dans le Sheet, l'application le signale plutôt que de calculer un résultat peu fiable |
 
 ---
-
+## 7.6 Démo
+ 
+Une version de démonstration autonome de la web app est disponible : [`demo/DEMO-dispatch-placement.html`](demo/DEMO-dispatch-placement.html). Elle contient des données fictives (étudiants et entreprises inventés) et ne se connecte à aucun Google Sheet réel — elle peut donc être ouverte et manipulée librement par n'importe qui sans risque pour les données de production. Il suffit de l'ouvrir dans un navigateur (double-clic), aucune installation n'est nécessaire.
+ 
+**Vue "Carte"** — les entreprises avec des créneaux à pourvoir, triées par urgence :
+ 
+![Vue carte](assets/demo-carte.png)
+ 
+**Fiche candidat** — score sur 100, itinéraire réel en transport, actions rapides :
+ 
+![Fiche candidat](assets/demo-fiche-candidat.png)
+ 
+**Onglet "Entretiens"** — historique par étudiant, avec statut modifiable une fois la date passée :
+ 
+![Onglet entretiens](assets/demo-entretiens.png)
+ 
+**Onglet "Historique"** — traçabilité des actions (qui a placé qui) :
+ 
+![Onglet historique](assets/demo-historique.png)
+ 
+**Onglet "Analyses IA"** — résultats de l'analyse des CV, mis en cache :
+ 
+![Onglet analyses IA](assets/demo-analyses-ia.png)
+ 
+**Onglet "Données"** — contrôle qualité automatique des informations saisies :
+ 
+![Onglet données](assets/demo-donnees.png)
+ 
+---
 ## 8. Ce que l'outil a résolu
 
 | Problème initial | Réponse apportée |
