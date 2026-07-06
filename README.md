@@ -129,7 +129,7 @@ Lorsqu'un étudiant est placé sur un créneau :
 ---
 ## 7.6 Démo
  
-Une version de démonstration autonome de la web app est disponible : [`demo/DEMO-dispatch-placement.html`](demo/DEMO-dispatch-placement.html). Elle contient des données fictives (étudiants et entreprises inventés) et ne se connecte à aucun Google Sheet réel — elle peut donc être ouverte et manipulée librement par n'importe qui sans risque pour les données de production. Il suffit de l'ouvrir dans un navigateur (double-clic), aucune installation n'est nécessaire.
+Une version de démonstration autonome de la web app est disponible : [`demo/DEMO-dispatch-placement.html`](demo/DEMO-dispatch-placement.html) cliquable ici: https://i-f-k.github.io/MARIANNE-internship-Appscript-Webapp-and-Automation/. Elle contient des données fictives (étudiants et entreprises inventés) et ne se connecte à aucun Google Sheet réel — elle peut donc être ouverte et manipulée librement par n'importe qui sans risque pour les données de production. Il suffit de l'ouvrir dans un navigateur (double-clic), aucune installation n'est nécessaire.
  
 **Vue "Carte"** — les entreprises avec des créneaux à pourvoir, triées par urgence :
  
