@@ -16,6 +16,7 @@ Le projet MARIANNE automatise le suivi des étudiants en BTS alternance (MCO / N
 - Suivi des CERFA laborieux, sans visibilité sur l'avancement des dossiers.
 
 **Réponse apportée :** une base de données centralisée (Google Sheets), des automatisations Google Apps Script pour fiabiliser les statuts et synchronisations, et une web app dédiée au matching étudiant/entreprise et au placement.
+L'IA a largement été utilisée pour la partie technique de ce projet.
 
 ---
 
