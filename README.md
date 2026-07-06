@@ -89,7 +89,7 @@ Chaque modification dans AGENDA déclenche aussi automatiquement la mise à jour
 
 ## 7. La Web App — matching et placement
 
-Pensée pour remplacer la recherche manuelle de profils (CV lus un par un, comparaison des compétences et de la distance à la main), la web app propose un classement automatique des meilleurs candidats pour chaque entreprise.
+Pensée pour remplacer la recherche manuelle de profils (CV lus un par un, comparaison des compétences et de la distance à la main), la web app propose un classement automatique des meilleurs candidats pour chaque entreprise (`Code.js` et `index.html`).
 
 ### 7.1 Analyse IA des CV
 Chaque CV est analysé (via l'API Mistral) pour en extraire : un résumé, les expériences et secteurs, les qualités, les centres d'intérêt, les compétences opérationnelles, et la présence d'un permis de conduire. Une note IA sur 25 ("score retail") est attribuée. Chaque analyse est mise en cache (elle n'est jamais refaite tant que le CV ou la version du prompt ne change pas).
